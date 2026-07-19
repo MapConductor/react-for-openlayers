@@ -1,0 +1,48 @@
+{
+  "name": "@mapconductor/react-for-openlayers",
+  "version": "0.1.1",
+  "description": "OpenLayers provider for MapConductor React SDK",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./style.css": "./dist/style.css"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "postbuild": "node -e \"const fs=require('fs');const olCss=fs.readFileSync(require.resolve('ol/ol.css'),'utf8');const css=olCss+'\\n.ol-map{position:relative;width:100%;height:100%}\\n';fs.writeFileSync('./dist/style.css',css);\"",
+    "dev": "tsup src/index.ts --format cjs,esm --watch",
+    "clean": "rm -rf dist",
+    "test": "echo 'No tests yet'"
+  },
+  "keywords": [
+    "maps",
+    "openlayers",
+    "react",
+    "typescript"
+  ],
+  "author": "MapConductor",
+  "license": "Apache2",
+  "peerDependencies": {
+    "@mapconductor/js-sdk-core": "^0.1.0",
+    "react": "^19.2.0"
+  },
+  "dependencies": {
+    "@mapconductor/js-sdk-core": "0.1.0",
+    "@mapconductor/js-sdk-react": "0.1.0",
+    "ol": "^10.2.1"
+  },
+  "devDependencies": {
+    "react": "^19.2.7",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  }
+}
