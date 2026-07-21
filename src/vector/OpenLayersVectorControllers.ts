@@ -17,10 +17,6 @@ import {
   type GroundImageEntity,
   type GroundImageState,
   type GeoPoint,
-  type OnCircleEventHandler,
-  type OnGroundImageEventHandler,
-  type OnPolygonEventHandler,
-  type OnPolylineEventHandler,
   type PolygonEntity,
   type PolygonState,
   type PolylineEntity,
@@ -131,10 +127,6 @@ export class OpenLayersCircleController extends CircleController<Feature<CircleG
   constructor(renderer: OpenLayersCircleRenderer) {
     super({ circleManager: new CircleManager(), renderer });
   }
-
-  async composition(data: CircleState[]): Promise<void> { await this.add(data); }
-  has(state: CircleState): boolean { return this.circleManager.hasEntity(state.id); }
-  setOnClickListener(listener: OnCircleEventHandler | null): void { this.clickListener = listener; }
 }
 
 export class OpenLayersPolylineRenderer extends AbstractPolylineOverlayRenderer<
@@ -192,10 +184,6 @@ export class OpenLayersPolylineController extends PolylineController<Feature<Lin
   constructor(renderer: OpenLayersPolylineRenderer) {
     super({ polylineManager: new PolylineManager(), renderer });
   }
-
-  async composition(data: PolylineState[]): Promise<void> { await this.add(data); }
-  has(state: PolylineState): boolean { return this.polylineManager.hasEntity(state.id); }
-  setOnClickListener(listener: OnPolylineEventHandler | null): void { this.clickListener = listener; }
 }
 
 export class OpenLayersPolygonRenderer extends AbstractPolygonOverlayRenderer<
@@ -292,10 +280,6 @@ export class OpenLayersPolygonController extends PolygonController<Feature<Polyg
   constructor(renderer: OpenLayersPolygonRenderer) {
     super({ polygonManager: new PolygonManager(), renderer });
   }
-
-  async composition(data: PolygonState[]): Promise<void> { await this.add(data); }
-  has(state: PolygonState): boolean { return this.polygonManager.hasEntity(state.id); }
-  setOnClickListener(listener: OnPolygonEventHandler | null): void { this.clickListener = listener; }
 }
 
 export class OpenLayersGroundImageRenderer extends AbstractGroundImageOverlayRenderer<
@@ -367,8 +351,4 @@ export class OpenLayersGroundImageController extends GroundImageController<Featu
   constructor(renderer: OpenLayersGroundImageRenderer) {
     super({ groundImageManager: new GroundImageManager(), renderer });
   }
-
-  async composition(data: GroundImageState[]): Promise<void> { await this.add(data); }
-  has(state: GroundImageState): boolean { return this.groundImageManager.hasEntity(state.id); }
-  setOnClickListener(listener: OnGroundImageEventHandler | null): void { this.clickListener = listener; }
 }

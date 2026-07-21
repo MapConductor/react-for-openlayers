@@ -44,10 +44,6 @@ export class OpenLayersMapViewHolder extends MapViewHolderBase<HTMLElement, Map>
     return this.mapPixelToViewport({ x: pixel[0], y: pixel[1] });
   }
 
-  async fromScreenOffset(offset: Offset): Promise<GeoPoint> {
-    return this.fromScreenOffsetSync(offset);
-  }
-
   fromScreenOffsetSync(offset: Offset): GeoPoint {
     const pixel = this.viewportToMapPixel(offset);
     const coordinate = this.map.getCoordinateFromPixel([pixel.x, pixel.y]);

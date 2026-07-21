@@ -9,10 +9,8 @@ import {
   createGeoPoint,
   createRasterLayerState,
   type GeoPoint,
-  type MarkerAnimationOverlayHost,
   type MarkerEntity,
   type MarkerState,
-  type OnMarkerEventHandler,
   type RasterLayerState,
 } from '@mapconductor/js-sdk-core';
 import type Feature from 'ol/Feature';
@@ -65,37 +63,14 @@ export class OpenLayersMarkerController extends AbstractMarkerController<Feature
     renderer.holder.map.addInteraction(this.translateInteraction);
   }
 
-  async composition(data: MarkerState[]): Promise<void> {
-    await this.add(data);
-  }
-
   override async update(state: MarkerState): Promise<void> {
     if (this.isDragging(state)) return;
     await super.update(state);
   }
 
-  has(state: MarkerState): boolean {
-    return this.markerManager.hasEntity(state.id);
-  }
-
-  override find(position: GeoPoint): MarkerEntity<Feature<Point>> | null {
-    return this.markerManager.findNearest(position);
-  }
-
   findTiled(position: GeoPoint, zoom: number): MarkerEntity<Feature<Point>> | null {
     const found = this.tileRenderer?.findNearest(position, MARKER_HIT_RADIUS_MOUSE_PX, zoom);
     return found ? this.markerManager.getEntity(found.id) : null;
-  }
-
-  setOnClickListener(listener: OnMarkerEventHandler | null): void { this.clickListener = listener; }
-  setOnDragStart(listener: OnMarkerEventHandler | null): void { this.dragStartListener = listener; }
-  setOnDrag(listener: OnMarkerEventHandler | null): void { this.dragListener = listener; }
-  setOnDragEnd(listener: OnMarkerEventHandler | null): void { this.dragEndListener = listener; }
-  setOnAnimateStart(listener: OnMarkerEventHandler | null): void { this.animateStartListener = listener; }
-  setOnAnimateEnd(listener: OnMarkerEventHandler | null): void { this.animateEndListener = listener; }
-
-  setMarkerAnimationOverlayHost(host: MarkerAnimationOverlayHost | null): void {
-    this.renderer.animationOverlayHost = host;
   }
 
   override async clear(): Promise<void> {
