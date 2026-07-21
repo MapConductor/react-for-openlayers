@@ -1,11 +1,13 @@
 import {
   MapProvider,
   MarkerTilingOptions,
+  type GeoRectBounds,
   type MapConfig,
   type MapViewControllerInterface,
 } from '@mapconductor/js-sdk-core';
 import Map from 'ol/Map.js';
 import View from 'ol/View.js';
+import type { Extent } from 'ol/extent';
 import TileLayer from 'ol/layer/Tile.js';
 import type { MapOptions } from 'ol/Map';
 import type { OpenLayersMapDesignType } from './OpenLayersDesign';
@@ -33,8 +35,17 @@ export interface OpenLayersConfig extends MapConfig {
   mapDesignType: OpenLayersMapDesignType;
   maxZoom?: number;
   minZoom?: number;
+  /** Restricts panning/zooming so the viewport cannot leave this rectangle. */
+  restrictBounds?: GeoRectBounds;
   markerTilingOptions?: MarkerTilingOptions;
   options?: Omit<MapOptions, 'target'>;
+}
+
+function toExtent(bounds: GeoRectBounds | undefined): Extent | undefined {
+  if (!bounds?.southWest || !bounds.northEast) return undefined;
+  const [minX, minY] = toCoordinate(bounds.southWest);
+  const [maxX, maxY] = toCoordinate(bounds.northEast);
+  return [minX, minY, maxX, maxY];
 }
 
 export class OpenLayersProvider extends MapProvider {
@@ -51,6 +62,7 @@ export class OpenLayersProvider extends MapProvider {
       zoom: initial?.zoom ?? 0,
       minZoom: config.minZoom,
       maxZoom: config.maxZoom,
+      extent: toExtent(config.restrictBounds),
       rotation: -(initial?.bearing ?? 0) * (Math.PI / 180),
     });
 

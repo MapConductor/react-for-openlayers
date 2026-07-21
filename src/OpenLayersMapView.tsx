@@ -11,6 +11,7 @@ import {
 import {
   MarkerTilingOptions,
   type GeoPoint,
+  type GeoRectBounds,
   type MapCameraPosition,
   type MapViewBaseProps,
   type MarkerAnimationOverlayEntry,
@@ -24,6 +25,8 @@ import type { OpenLayersMapViewController } from './OpenLayersMapViewController'
 export interface OpenLayersMapViewProps extends MapViewBaseProps<OpenLayersMapViewStateInterface> {
   maxZoom?: number;
   minZoom?: number;
+  /** Restricts panning/zooming so the viewport cannot leave this rectangle. */
+  restrictBounds?: GeoRectBounds;
   className?: string;
   containerStyle?: CSSProperties;
   options?: Omit<MapOptions, 'target'>;
@@ -42,6 +45,7 @@ export function OpenLayersMapView({
   onCameraMoveEnd,
   maxZoom,
   minZoom,
+  restrictBounds,
   className,
   containerStyle,
   options,
@@ -110,6 +114,7 @@ export function OpenLayersMapView({
       mapDesignType: state.mapDesignType,
       maxZoom,
       minZoom,
+      restrictBounds,
       markerTilingOptions,
       options,
     };
@@ -213,6 +218,7 @@ export function OpenLayersMapView({
     markerTilingOptions,
     maxZoom,
     minZoom,
+    restrictBounds,
     options,
     provider,
     scope,

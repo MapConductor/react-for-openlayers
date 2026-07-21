@@ -75,7 +75,13 @@ export class OpenLayersCircleRenderer extends AbstractCircleOverlayRenderer<
   private layers = new Map<string, VectorLayer<VectorSource<Feature<CircleGeometry>>>>();
 
   async createCircle(state: CircleState): Promise<Feature<CircleGeometry>> {
-    const circle = new CircleClass(toCoordinate(state.center), state.radiusMeters);
+    // The view is Web Mercator, whose map units are metres at the equator;
+    // ground metres at the circle's latitude span 1 / cos(lat) map units.
+    // Passing radiusMeters raw draws the circle cos(lat) too small (~7% at
+    // Hawaii, worse toward the poles).
+    const latRad = (state.center.latitude * Math.PI) / 180;
+    const mapUnitRadius = state.radiusMeters / Math.max(Math.cos(latRad), 0.01);
+    const circle = new CircleClass(toCoordinate(state.center), mapUnitRadius);
     const feature = new FeatureClass({ geometry: circle });
     feature.setId(state.id);
 
