@@ -1,4 +1,4 @@
-English | [日本語](https://github.com/MapConductor/react-for-openlayers/README.ja.md) | [Español (Latinoamérica)](https://github.com/MapConductor/react-for-openlayers/README.es-419.md)
+English | [日本語](https://github.com/MapConductor/react-for-openlayers/blob/main/README.ja.md) | [Español (Latinoamérica)](https://github.com/MapConductor/react-for-openlayers/blob/main/README.es-419.md)
 
 # @mapconductor/react-for-openlayers
 
