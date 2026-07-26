@@ -24,12 +24,6 @@ interface LocalTileTemplate {
   requiresDirectLoad: boolean;
 }
 
-function tileZoomForTileSize(zoom: number, tileSize: number): number {
-  const offset = Math.log2(tileSize / 256);
-  if (!Number.isFinite(offset) || !Number.isInteger(offset)) return zoom;
-  return Math.max(0, zoom - offset);
-}
-
 export class OpenLayersRasterLayerRenderer {
   constructor(readonly holder: OpenLayersMapViewHolder) {}
 
@@ -63,9 +57,15 @@ export class OpenLayersRasterLayerRenderer {
         if (local) {
           const tileSize = source.tileSize ?? local.tileSize;
           tileSource = new XYZ({
+            // OpenLayers' XYZ tile grid already yields the standard web-mercator
+            // z for any tileSize (a 512px grid is one zoom coarser, so z matches
+            // a 256px grid's z for the same ground extent). The route renderer
+            // expects that standard z/x/y, so pass tileCoord straight through —
+            // adjusting z here requested a coarser level whose x/y were out of
+            // range, producing blank tiles (e.g. the 512px GeoJSON layer).
             tileUrlFunction: tileCoord => renderXYZTemplate(
               source.template,
-              tileZoomForTileSize(tileCoord[0], tileSize),
+              tileCoord[0],
               tileCoord[1],
               tileCoord[2],
             ),

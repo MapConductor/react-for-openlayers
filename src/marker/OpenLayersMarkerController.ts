@@ -6,11 +6,14 @@ import {
   MarkerTileRenderer,
   MarkerTilingOptions,
   RasterLayerSource,
+  Settings,
+  createDefaultIcon,
   createGeoPoint,
   createRasterLayerState,
   type GeoPoint,
   type MarkerEntity,
   type MarkerState,
+  type Offset,
   type RasterLayerState,
 } from '@mapconductor/js-sdk-core';
 import type Feature from 'ol/Feature';
@@ -71,6 +74,70 @@ export class OpenLayersMarkerController extends AbstractMarkerController<Feature
   findTiled(position: GeoPoint, zoom: number): MarkerEntity<Feature<Point>> | null {
     const found = this.tileRenderer?.findNearest(position, MARKER_HIT_RADIUS_MOUSE_PX, zoom);
     return found ? this.markerManager.getEntity(found.id) : null;
+  }
+
+  /**
+   * Shows/hides every native marker (the whole vector layer). The 2D view hides
+   * them while its CSS tilt hack is active — they would otherwise lie flat
+   * against the ground — and draws upright canvas billboards instead. Hit-testing
+   * is unaffected: clicks are resolved via findAtScreen while tilted.
+   */
+  setNativeMarkersVisible(visible: boolean): void {
+    this.renderer.setNativeVisible(visible);
+  }
+
+  /** Whether native markers are currently visible (false while tilted). */
+  isNativeMarkersVisible(): boolean {
+    return this.renderer.isNativeVisible;
+  }
+
+  /** Live states of the non-tiled (native) markers, for the tilt billboard canvas. */
+  getNonTiledMarkerStates(): MarkerState[] {
+    return this.markerManager
+      .allEntities()
+      .filter(entity => entity.marker !== null)
+      .map(entity => entity.state);
+  }
+
+  /**
+   * Hit-tests non-tiled markers against a screen point in the tilt-aware viewport
+   * space used by the canvas billboards (see holder.toScreenOffset). Returns the
+   * top-most marker whose upright icon rectangle contains the point, falling back
+   * to the nearest within the tap tolerance. Used for clicks while tilted, where
+   * OpenLayers' own feature hit-testing is skewed by the CSS transform. Mirrors
+   * HERE's `find`.
+   */
+  findAtScreen(touch: Offset): MarkerEntity<Feature<Point>> | null {
+    const holder = this.renderer.holder;
+    const tolerance = Settings.Default.tapTolerance;
+    let bestOnIcon: MarkerEntity<Feature<Point>> | null = null;
+    let bestOnIconY = -Infinity;
+    let bestNear: MarkerEntity<Feature<Point>> | null = null;
+    let bestNearDistSq = Infinity;
+    for (const entity of this.markerManager.allEntities()) {
+      if (entity.marker === null) continue; // tiled markers are hit-tested via findTiled
+      const markerScreen = holder.toScreenOffset(entity.state.position);
+      const icon = (entity.state.icon ?? createDefaultIcon()).toBitmapIcon();
+      const dx = touch.x - markerScreen.x;
+      const dy = touch.y - markerScreen.y;
+      const left = -icon.anchor.x * icon.size.width;
+      const right = (1 - icon.anchor.x) * icon.size.width;
+      const top = -icon.anchor.y * icon.size.height;
+      const bottom = (1 - icon.anchor.y) * icon.size.height;
+      if (dx >= left && dx <= right && dy >= top && dy <= bottom) {
+        if (markerScreen.y > bestOnIconY) {
+          bestOnIconY = markerScreen.y;
+          bestOnIcon = entity;
+        }
+      } else if (dx >= left - tolerance && dx <= right + tolerance && dy >= top - tolerance && dy <= bottom + tolerance) {
+        const distSq = dx * dx + dy * dy;
+        if (distSq < bestNearDistSq) {
+          bestNearDistSq = distSq;
+          bestNear = entity;
+        }
+      }
+    }
+    return bestOnIcon ?? bestNear;
   }
 
   override async clear(): Promise<void> {

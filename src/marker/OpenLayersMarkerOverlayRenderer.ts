@@ -39,6 +39,22 @@ export class OpenLayersMarkerOverlayRenderer extends AbstractMarkerOverlayRender
     holder.map.addLayer(this.vectorLayer);
   }
 
+  /**
+   * Whether the native marker vector layer is visible. The 2D view fakes camera
+   * tilt with a CSS `rotateX` on the map, which lays the canvas-drawn marker
+   * icons flat against the ground. While tilted the view hides this layer and
+   * draws upright, billboarded icons on a separate canvas instead. Toggling the
+   * layer hides every non-tiled marker (and any added later) at once.
+   */
+  setNativeVisible(visible: boolean): void {
+    this.vectorLayer.setVisible(visible);
+  }
+
+  /** Whether native markers are currently visible (false while tilted). */
+  get isNativeVisible(): boolean {
+    return this.vectorLayer.getVisible();
+  }
+
   async onAdd(data: AddParams[]): Promise<(Feature<Point> | null)[]> {
     const features: (Feature<Point> | null)[] = [];
 
