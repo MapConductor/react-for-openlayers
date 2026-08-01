@@ -3,9 +3,12 @@ import {
   AbstractGroundImageOverlayRenderer,
   AbstractPolygonOverlayRenderer,
   AbstractPolylineOverlayRenderer,
+  buildUnwrappedPolygonRings,
+  buildUnwrappedPolylinePath,
+  circleToRing,
+  closeRing,
   CircleController,
   CircleManager,
-  createInterpolatePoints,
   GroundImageController,
   GroundImageManager,
   PolygonController,
@@ -24,13 +27,11 @@ import {
 } from '@mapconductor/js-sdk-core';
 import type Feature from 'ol/Feature';
 import type { Point } from 'ol/geom';
-import type CircleGeometry from 'ol/geom/Circle';
 import type LineString from 'ol/geom/LineString';
 import type PolygonGeometry from 'ol/geom/Polygon';
 import type VectorLayer from 'ol/layer/Vector';
 import type VectorSource from 'ol/source/Vector';
 import FeatureClass from 'ol/Feature.js';
-import CircleClass from 'ol/geom/Circle.js';
 import LineStringClass from 'ol/geom/LineString.js';
 import PolygonClass from 'ol/geom/Polygon.js';
 import VectorLayerClass from 'ol/layer/Vector.js';
@@ -66,19 +67,19 @@ function vectorLayer(
 
 export class OpenLayersCircleRenderer extends AbstractCircleOverlayRenderer<
   OpenLayersMapViewHolder,
-  Feature<CircleGeometry>
+  Feature<PolygonGeometry>
 > {
-  private layers = new Map<string, VectorLayer<VectorSource<Feature<CircleGeometry>>>>();
+  private layers = new Map<string, VectorLayer<VectorSource<Feature<PolygonGeometry>>>>();
 
-  async createCircle(state: CircleState): Promise<Feature<CircleGeometry>> {
-    // The view is Web Mercator, whose map units are metres at the equator;
-    // ground metres at the circle's latitude span 1 / cos(lat) map units.
-    // Passing radiusMeters raw draws the circle cos(lat) too small (~7% at
-    // Hawaii, worse toward the poles).
-    const latRad = (state.center.latitude * Math.PI) / 180;
-    const mapUnitRadius = state.radiusMeters / Math.max(Math.cos(latRad), 0.01);
-    const circle = new CircleClass(toCoordinate(state.center), mapUnitRadius);
-    const feature = new FeatureClass({ geometry: circle });
+  async createCircle(state: CircleState): Promise<Feature<PolygonGeometry>> {
+    // コア共通の circleToRing でリングを生成し、投影座標のポリゴンとして描画する
+    // （geodesic 円を表現できない native の ol/geom/Circle は使わない）。リングは
+    // 中心経度まわりに連続化（unwrap）済みなので ±180 跨ぎでも分割不要。
+    const ring = closeRing(
+      circleToRing(state.center, state.radiusMeters, state.geodesic),
+    );
+    const polygon = new PolygonClass([ring.map((p) => toCoordinate(p))]);
+    const feature = new FeatureClass({ geometry: polygon });
     feature.setId(state.id);
 
     const style = new StyleClass({
@@ -103,8 +104,8 @@ export class OpenLayersCircleRenderer extends AbstractCircleOverlayRenderer<
   async updateCircleProperties({
     current,
   }: {
-    current: CircleEntity<Feature<CircleGeometry>>;
-  }): Promise<Feature<CircleGeometry>> {
+    current: CircleEntity<Feature<PolygonGeometry>>;
+  }): Promise<Feature<PolygonGeometry>> {
     const previousLayer = this.layers.get(current.state.id);
     if (previousLayer) {
       this.holder.map.removeLayer(previousLayer);
@@ -113,7 +114,7 @@ export class OpenLayersCircleRenderer extends AbstractCircleOverlayRenderer<
     return this.createCircle(current.state);
   }
 
-  async removeCircle(entity: CircleEntity<Feature<CircleGeometry>>): Promise<void> {
+  async removeCircle(entity: CircleEntity<Feature<PolygonGeometry>>): Promise<void> {
     const layer = this.layers.get(entity.state.id);
     if (layer) {
       layer.getSource()?.removeFeature(entity.circle);
@@ -123,7 +124,7 @@ export class OpenLayersCircleRenderer extends AbstractCircleOverlayRenderer<
   }
 }
 
-export class OpenLayersCircleController extends CircleController<Feature<CircleGeometry>> {
+export class OpenLayersCircleController extends CircleController<Feature<PolygonGeometry>> {
   constructor(renderer: OpenLayersCircleRenderer) {
     super({ circleManager: new CircleManager(), renderer });
   }
@@ -241,39 +242,31 @@ export class OpenLayersPolygonRenderer extends AbstractPolygonOverlayRenderer<
 }
 
 function polygonCoordinates(state: PolygonState): number[][][] {
-  return [state.points, ...state.holes].map(ring =>
-    ringToCoordinates(ring, state.geodesic),
+  // Core pipeline: densify each ring (geodesic great-circle or straight-in-
+  // lat/lng linear interpolation, matching the Android renderers) and unwrap
+  // the longitudes into the outer ring's world copy before projecting.
+  const { outerRings, holeRings } = buildUnwrappedPolygonRings(
+    state.points,
+    state.holes,
+    state.geodesic,
   );
+  return [...outerRings, ...holeRings].map(ring => closeRingCoordinates(ring));
 }
 
-function ringToCoordinates(points: GeoPoint[], geodesic: boolean): number[][] {
-  if (points.length === 0) return [];
-
-  const closedPoints = samePoint(points[0], points[points.length - 1])
-    ? points
-    : [...points, points[0]];
-  return pathToCoordinates(closedPoints, geodesic);
+function closeRingCoordinates(ring: GeoPoint[]): number[][] {
+  const coordinates = ring.map(point => toCoordinate(point));
+  if (coordinates.length === 0) return coordinates;
+  const first = coordinates[0];
+  const last = coordinates[coordinates.length - 1];
+  if (first[0] !== last[0] || first[1] !== last[1]) coordinates.push(first);
+  return coordinates;
 }
 
 function pathToCoordinates(points: GeoPoint[], geodesic: boolean): number[][] {
-  if (points.length === 0) return [];
-
-  const renderedPoints = geodesic ? createInterpolatePoints(points) : points;
-
-  let previousLongitude: number | null = null;
-  return renderedPoints.map(point => {
-    let longitude = point.normalize().longitude;
-    if (previousLongitude != null) {
-      while (longitude - previousLongitude > 180) longitude -= 360;
-      while (longitude - previousLongitude < -180) longitude += 360;
-    }
-    previousLongitude = longitude;
-    return toCoordinate({ longitude, latitude: point.latitude });
-  });
-}
-
-function samePoint(a: GeoPoint, b: GeoPoint): boolean {
-  return a.latitude === b.latitude && a.longitude === b.longitude;
+  // Core pipeline for both modes: densification (great-circle when geodesic,
+  // linear lat/lng otherwise — Android's straight-line semantics) + longitude
+  // unwrap (before projecting).
+  return buildUnwrappedPolylinePath(points, geodesic).map(point => toCoordinate(point));
 }
 
 export class OpenLayersPolygonController extends PolygonController<Feature<PolygonGeometry>> {

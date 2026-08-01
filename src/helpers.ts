@@ -1,5 +1,5 @@
 import { createGeoPoint, type GeoPoint, type GeoPointInterface } from '@mapconductor/js-sdk-core';
-import type Coordinate from 'ol/coordinate';
+import type { Coordinate } from 'ol/coordinate';
 import type Map from 'ol/Map';
 import { fromLonLat, toLonLat } from 'ol/proj.js';
 import LayerGroup from 'ol/layer/Group.js';
