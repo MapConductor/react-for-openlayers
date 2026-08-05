@@ -26,9 +26,10 @@ import {
   type PolylineState,
 } from '@mapconductor/js-sdk-core';
 import type Feature from 'ol/Feature';
-import type { Point } from 'ol/geom';
+import type { Geometry, Point } from 'ol/geom';
 import type LineString from 'ol/geom/LineString';
 import type PolygonGeometry from 'ol/geom/Polygon';
+import type BaseLayer from 'ol/layer/Base';
 import type VectorLayer from 'ol/layer/Vector';
 import type VectorSource from 'ol/source/Vector';
 import FeatureClass from 'ol/Feature.js';
@@ -48,13 +49,13 @@ import { toCoordinate } from '../helpers';
 const VECTOR_BASE_Z_INDEX = 400;
 const GROUND_IMAGE_BASE_Z_INDEX = 300;
 
-function vectorLayer(
+function vectorLayer<G extends Geometry>(
   holder: OpenLayersMapViewHolder,
   kind: string,
   id: string,
   zIndex: number,
-): VectorLayer<VectorSource<Feature<any>>> {
-  const source = new VectorSourceClass();
+): VectorLayer<VectorSource<Feature<G>>> {
+  const source = new VectorSourceClass<Feature<G>>();
   const layer = new VectorLayerClass({
     source,
     zIndex: VECTOR_BASE_Z_INDEX + Math.max(-100, Math.min(100, zIndex)),
@@ -94,7 +95,7 @@ export class OpenLayersCircleRenderer extends AbstractCircleOverlayRenderer<
 
     feature.setStyle(style);
 
-    const layer = vectorLayer(this.holder, 'circle', state.id, state.zIndex ?? 0);
+    const layer = vectorLayer<PolygonGeometry>(this.holder, 'circle', state.id, state.zIndex ?? 0);
     layer.getSource()?.addFeature(feature);
     this.layers.set(state.id, layer);
 
@@ -151,7 +152,7 @@ export class OpenLayersPolylineRenderer extends AbstractPolylineOverlayRenderer<
 
     feature.setStyle(style);
 
-    const layer = vectorLayer(this.holder, 'polyline', state.id, state.zIndex);
+    const layer = vectorLayer<LineString>(this.holder, 'polyline', state.id, state.zIndex);
     layer.getSource()?.addFeature(feature);
     this.layers.set(state.id, layer);
 
@@ -211,7 +212,7 @@ export class OpenLayersPolygonRenderer extends AbstractPolygonOverlayRenderer<
 
     feature.setStyle(style);
 
-    const layer = vectorLayer(this.holder, 'polygon', state.id, state.zIndex);
+    const layer = vectorLayer<PolygonGeometry>(this.holder, 'polygon', state.id, state.zIndex);
     layer.getSource()?.addFeature(feature);
     this.layers.set(state.id, layer);
 
@@ -275,44 +276,59 @@ export class OpenLayersPolygonController extends PolygonController<Feature<Polyg
   }
 }
 
+type OLImageLayer = InstanceType<typeof ImageLayerClass>;
+
 export class OpenLayersGroundImageRenderer extends AbstractGroundImageOverlayRenderer<
   OpenLayersMapViewHolder,
   Feature<Point>
 > {
-  async createGroundImage(state: GroundImageState): Promise<Feature<Point> | null> {
+  // ImageStatic's extent is immutable, so a reposition needs a fresh source.
+  // Removing the old layer and adding the new one (the previous approach) blanks
+  // the ground image for a frame while the new image loads, which flickers on
+  // every corner-marker drag. Instead double-buffer: add the new layer, wait for
+  // its image to finish loading, then remove the old one — the previous image
+  // stays on screen until the replacement is ready, so there is no blank frame.
+  private readonly currentLayer = new Map<string, OLImageLayer>();
+  private readonly pendingLayer = new Map<string, OLImageLayer>();
+
+  private extentOf(state: GroundImageState): number[] | null {
     const { southWest, northEast } = state.bounds;
     if (!southWest || !northEast) return null;
+    return [...toCoordinate(southWest), ...toCoordinate(northEast)];
+  }
 
-    const extent = [
-      ...toCoordinate(southWest),
-      ...toCoordinate(northEast),
-    ];
+  private buildLayer(state: GroundImageState, extent: number[]): { layer: OLImageLayer; source: InstanceType<typeof StaticClass> } {
+    const source = new StaticClass({ url: state.imageUrl, imageExtent: extent });
+    const layer = new ImageLayerClass({
+      source,
+      zIndex: GROUND_IMAGE_BASE_Z_INDEX,
+      opacity: state.opacity,
+    });
+    layer.set('name', `mc-ground-image-${state.id}`);
+    return { layer, source };
+  }
+
+  private dropPending(id: string): void {
+    const pending = this.pendingLayer.get(id);
+    if (pending) {
+      this.holder.map.removeLayer(pending);
+      this.pendingLayer.delete(id);
+    }
+  }
+
+  async createGroundImage(state: GroundImageState): Promise<Feature<Point> | null> {
+    const extent = this.extentOf(state);
+    if (!extent) return null;
 
     const feature = new FeatureClass<Point>();
     feature.setId(state.id);
+    feature.setStyle(new StyleClass({
+      image: new IconClass({ src: state.imageUrl, opacity: state.opacity }),
+    }));
 
-    const style = new StyleClass({
-      image: new IconClass({
-        src: state.imageUrl,
-        opacity: state.opacity,
-      }),
-    });
-
-    feature.setStyle(style);
-
-    const imageSource = new StaticClass({
-      url: state.imageUrl,
-      imageExtent: extent,
-    });
-
-    const imageLayer = new ImageLayerClass({
-      source: imageSource,
-      zIndex: GROUND_IMAGE_BASE_Z_INDEX,
-    });
-
-    imageLayer.set('name', `mc-ground-image-${state.id}`);
-    this.holder.map.addLayer(imageLayer);
-
+    const { layer } = this.buildLayer(state, extent);
+    this.holder.map.addLayer(layer);
+    this.currentLayer.set(state.id, layer);
     return feature;
   }
 
@@ -321,22 +337,55 @@ export class OpenLayersGroundImageRenderer extends AbstractGroundImageOverlayRen
   }: {
     current: GroundImageEntity<Feature<Point>>;
   }): Promise<Feature<Point> | null> {
-    const layerName = `mc-ground-image-${current.state.id}`;
-    const previousLayer = this.holder.map.getAllLayers().find(
-      (layer: any) => layer.get('name') === layerName,
-    );
-    if (previousLayer) this.holder.map.removeLayer(previousLayer);
-    return this.createGroundImage(current.state);
+    const state = current.state;
+    const id = state.id;
+    const extent = this.extentOf(state);
+    const existing = this.currentLayer.get(id);
+
+    // Lost track of the layer (e.g. first update after an external reset): fall
+    // back to a clean recreate.
+    if (!extent || !existing) {
+      this.dropPending(id);
+      const stray = this.holder.map.getAllLayers().find(
+        (layer: BaseLayer) => layer.get('name') === `mc-ground-image-${id}`,
+      );
+      if (stray) this.holder.map.removeLayer(stray);
+      this.currentLayer.delete(id);
+      return this.createGroundImage(state);
+    }
+
+    // A newer reposition supersedes any buffer still loading from a previous one.
+    this.dropPending(id);
+
+    const { layer, source } = this.buildLayer(state, extent);
+    this.pendingLayer.set(id, layer);
+
+    const promote = () => {
+      // Ignore if this buffer was superseded/removed before it finished loading.
+      if (this.pendingLayer.get(id) !== layer) return;
+      this.pendingLayer.delete(id);
+      const old = this.currentLayer.get(id);
+      if (old && old !== layer) this.holder.map.removeLayer(old);
+      this.currentLayer.set(id, layer);
+    };
+    source.once('imageloadend', promote);
+    source.once('imageloaderror', promote);
+
+    this.holder.map.addLayer(layer);
+    return current.groundImage;
   }
 
   async removeGroundImage(entity: GroundImageEntity<Feature<Point>>): Promise<void> {
-    const layers = this.holder.map.getAllLayers();
-    const layer = layers.find(
-      (layer: any) => layer.get('name') === `mc-ground-image-${entity.state.id}`,
+    const id = entity.state.id;
+    this.dropPending(id);
+    const current = this.currentLayer.get(id);
+    if (current) this.holder.map.removeLayer(current);
+    this.currentLayer.delete(id);
+    // Remove any stray layer left by a fallback recreate.
+    const stray = this.holder.map.getAllLayers().find(
+      (layer: BaseLayer) => layer.get('name') === `mc-ground-image-${id}`,
     );
-    if (layer) {
-      this.holder.map.removeLayer(layer);
-    }
+    if (stray) this.holder.map.removeLayer(stray);
   }
 }
 

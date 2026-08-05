@@ -1,13 +1,15 @@
 import { createGeoPoint, type GeoPoint, type GeoPointInterface } from '@mapconductor/js-sdk-core';
 import type { Coordinate } from 'ol/coordinate';
 import type Map from 'ol/Map';
+import type MapBrowserEvent from 'ol/MapBrowserEvent';
+import type BaseLayer from 'ol/layer/Base';
 import { fromLonLat, toLonLat } from 'ol/proj.js';
 import LayerGroup from 'ol/layer/Group.js';
 
 export const toCoordinate = (point: GeoPointInterface): Coordinate =>
   fromLonLat([point.longitude, point.latitude]);
 
-export const fromOpenLayersEvent = (event: any): GeoPoint => {
+export const fromOpenLayersEvent = (event: MapBrowserEvent): GeoPoint => {
   const [longitude, latitude] = toLonLat(event.coordinate);
   return createGeoPoint({ latitude, longitude });
 };
@@ -18,7 +20,7 @@ export function ensureLayerGroup(
   zIndex: number,
 ): void {
   const groups = map.getLayerGroup().getLayersArray();
-  const existing = groups.find(group => (group as any).get('name') === name);
+  const existing = groups.find(group => group.get('name') === name);
   if (existing) {
     existing.setZIndex(zIndex);
     return;
@@ -31,7 +33,7 @@ export function ensureLayerGroup(
   map.getLayerGroup().getLayers().push(group);
 }
 
-export function getLayerGroup(map: Map, name: string): any {
+export function getLayerGroup(map: Map, name: string): BaseLayer | undefined {
   const groups = map.getLayerGroup().getLayersArray();
-  return groups.find(group => (group as any).get('name') === name);
+  return groups.find(group => group.get('name') === name);
 }

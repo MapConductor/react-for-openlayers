@@ -1,6 +1,8 @@
 import {
   BaseMapViewController,
   createGeoPoint,
+  MapUISettingsDiagnostics,
+  type MapUISettings,
   createGeoRectBounds,
   createMapCameraPosition,
   computeOffset,
@@ -36,7 +38,16 @@ import {
   type VisibleRegion,
 } from '@mapconductor/js-sdk-core';
 import type Map from 'ol/Map';
+import type MapBrowserEvent from 'ol/MapBrowserEvent';
+import type { Types as MapBrowserEventTypes } from 'ol/MapBrowserEventType';
 import type View from 'ol/View';
+import DragPan from 'ol/interaction/DragPan.js';
+import DragZoom from 'ol/interaction/DragZoom.js';
+import DoubleClickZoom from 'ol/interaction/DoubleClickZoom.js';
+import KeyboardPan from 'ol/interaction/KeyboardPan.js';
+import KeyboardZoom from 'ol/interaction/KeyboardZoom.js';
+import MouseWheelZoom from 'ol/interaction/MouseWheelZoom.js';
+import PinchZoom from 'ol/interaction/PinchZoom.js';
 import { OpenLayersMapViewHolder } from './OpenLayersMapViewHolder';
 import { fromOpenLayersEvent, toCoordinate } from './helpers';
 import { toLonLat } from 'ol/proj.js';
@@ -113,6 +124,39 @@ export class OpenLayersMapViewController
 
   getMap(): Map { return this.map; }
 
+  /**
+   * OpenLayers keeps its interactions in one collection, so each is matched by
+   * type and switched with `setActive`. Interactions MapConductor adds itself
+   * (marker `Translate`) are left alone.
+   *
+   * The view's own rotation is pinned to 0 — bearing and tilt are faked with a
+   * CSS transform — so there is no rotate or tilt gesture to disable.
+   */
+  applyUISettings(settings: MapUISettings): void {
+    for (const interaction of this.map.getInteractions().getArray()) {
+      if (interaction instanceof DragPan || interaction instanceof KeyboardPan) {
+        interaction.setActive(settings.scrollGesture);
+      } else if (
+        interaction instanceof MouseWheelZoom
+        || interaction instanceof DoubleClickZoom
+        || interaction instanceof PinchZoom
+        || interaction instanceof DragZoom
+        || interaction instanceof KeyboardZoom
+      ) {
+        interaction.setActive(settings.zoomGesture);
+      }
+    }
+
+    MapUISettingsDiagnostics.warnIfRequested(
+      settings.rotateGesture, 'rotate', 'OpenLayers',
+      'bearing is emulated with a CSS transform, so there is no rotate gesture',
+    );
+    MapUISettingsDiagnostics.warnIfRequested(
+      settings.tiltGesture, 'tilt', 'OpenLayers',
+      'tilt is emulated with a CSS transform, so there is no tilt gesture',
+    );
+  }
+
   getVisualTilt(): number { return Math.min(60, Math.abs(this.logicalTilt)); }
 
   getVisualBearing(): number { return this.logicalBearing; }
@@ -138,7 +182,7 @@ export class OpenLayersMapViewController
       this.notifyCameraMoveEnd(camera);
     });
 
-    this.map.on('click' as any, (event: any) => {
+    this.map.on('click', (event: MapBrowserEvent) => {
       const feature = this.map.forEachFeatureAtPixel(event.pixel, candidate => candidate) as {
         getId(): string | number | undefined;
       } | undefined;
@@ -166,7 +210,10 @@ export class OpenLayersMapViewController
       this.notifyMapClick(clicked);
     });
 
-    this.map.on('contextmenu' as any, (event: any) => {
+    // 'contextmenu' is delivered by OpenLayers as a MapBrowserEvent at runtime
+    // but is absent from OL's typed map-browser event-name union, so the name
+    // needs a narrowing cast (string -> MapBrowserEventTypes, no `any`).
+    this.map.on('contextmenu' as string as MapBrowserEventTypes, (event: MapBrowserEvent) => {
       this.notifyMapLongClick(fromOpenLayersEvent(event));
     });
 
