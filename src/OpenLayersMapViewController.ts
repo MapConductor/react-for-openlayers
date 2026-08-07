@@ -3,9 +3,6 @@ import {
   createGeoPoint,
   MapUISettingsDiagnostics,
   type MapUISettings,
-  createGeoRectBounds,
-  createMapCameraPosition,
-  computeOffset,
   type CircleCapable,
   type CircleEvent,
   type CircleState,
@@ -34,7 +31,6 @@ import {
   type PolylineState,
   type RasterLayerCapable,
   type RasterLayerState,
-  type VisibleRegion,
 } from '@mapconductor/js-sdk-core';
 import type Map from 'ol/Map';
 import type MapBrowserEvent from 'ol/MapBrowserEvent';
@@ -48,7 +44,6 @@ import KeyboardZoom from 'ol/interaction/KeyboardZoom.js';
 import MouseWheelZoom from 'ol/interaction/MouseWheelZoom.js';
 import PinchZoom from 'ol/interaction/PinchZoom.js';
 import { OpenLayersMapViewHolder } from './OpenLayersMapViewHolder';
-import { fromOpenLayersEvent, toCoordinate } from './helpers';
 import { toLonLat } from 'ol/proj.js';
 import { OpenLayersMarkerController } from './marker/OpenLayersMarkerController';
 import {
@@ -58,6 +53,8 @@ import {
   OpenLayersPolylineController,
 } from './vector/OpenLayersVectorControllers';
 import { OpenLayersRasterLayerController } from './raster/OpenLayersRasterLayer';
+import { OpenLayersCameraState } from './OpenLayersCameraState';
+import { fromOpenLayersEvent } from './helpers';
 
 export class OpenLayersMapViewController
   extends BaseMapViewController
@@ -71,12 +68,10 @@ export class OpenLayersMapViewController
     RasterLayerCapable {
   private readonly map: Map;
   private readonly view: View;
+
+  /** 論理カメラの保持とカメラ操作。状態を持つのでコンストラクタで組み立てて注入する。 */
+  private readonly camera: OpenLayersCameraState;
   private destroyed = false;
-  private logicalTilt: number;
-  private logicalPosition = createGeoPoint({ latitude: 0, longitude: 0 });
-  private logicalZoom = 0;
-  private logicalBearing = 0;
-  private hasLogicalCameraOverride = false;
   private isCameraMoving = false;
 
   constructor(
@@ -93,26 +88,21 @@ export class OpenLayersMapViewController
     super();
     this.map = holder.map;
     this.view = holder.view;
-    this.logicalTilt = initialTilt;
+    this.camera = new OpenLayersCameraState(
+      { map: this.map, view: this.view, holder },
+      initialTilt,
+      initialBearing,
+    );
     const initialCenter = this.view.getCenter();
-    if (initialCenter) {
-      const [longitude, latitude] = toLonLat(initialCenter);
-      this.logicalPosition = createGeoPoint({ latitude, longitude });
-    }
-    this.logicalZoom = this.view.getZoom() ?? 0;
-    this.logicalBearing = initialBearing;
-    this.hasLogicalCameraOverride = initialTilt !== 0 || initialBearing !== 0;
+    const initialPosition = initialCenter
+      ? (() => {
+          const [longitude, latitude] = toLonLat(initialCenter);
+          return createGeoPoint({ latitude, longitude });
+        })()
+      : null;
+    this.camera.seed(initialPosition, this.view.getZoom() ?? 0);
     this.view.setRotation(0);
-    if (this.hasLogicalCameraOverride) {
-      const camera = toOpenLayersCamera(createMapCameraPosition({
-        position: this.logicalPosition,
-        zoom: this.logicalZoom,
-        bearing: initialBearing,
-        tilt: initialTilt,
-      }));
-      this.view.setCenter(toCoordinate(camera.position));
-      this.view.setZoom(camera.zoom);
-    }
+    this.camera.applyInitialOverride();
     holder.setController(this);
     markerController.onRasterLayerUpdate = async state => {
       if (state) await rasterLayerController.updateInternal(state);
@@ -156,9 +146,21 @@ export class OpenLayersMapViewController
     );
   }
 
-  getVisualTilt(): number { return Math.min(60, Math.abs(this.logicalTilt)); }
+  getVisualTilt(): number { return this.camera.visualTilt; }
 
-  getVisualBearing(): number { return this.logicalBearing; }
+  getVisualBearing(): number { return this.camera.visualBearing; }
+
+  getCameraPosition(): MapCameraPosition { return this.camera.read(); }
+
+  async moveCamera(position: MapCameraPosition): Promise<boolean> { return this.camera.move(position); }
+
+  async animateCamera(position: MapCameraPosition, durationMillis: number): Promise<boolean> {
+    return this.camera.animate(position, durationMillis);
+  }
+
+  async fitBounds(bounds: GeoRectBounds, padding: number): Promise<boolean> {
+    return this.camera.fit(bounds, padding);
+  }
 
   private setupEvents(): void {
     this.map.on('movestart', () => {
@@ -260,118 +262,11 @@ export class OpenLayersMapViewController
     if (listener && !this.destroyed) queueMicrotask(() => this.notifyMapInitialized());
   }
 
-  async moveCamera(position: MapCameraPosition): Promise<boolean> {
-    this.logicalTilt = position.tilt;
-    this.logicalPosition = position.position;
-    this.logicalZoom = position.zoom;
-    this.logicalBearing = position.bearing;
-    this.hasLogicalCameraOverride = position.tilt !== 0 || position.bearing !== 0;
-
-    const camera = toOpenLayersCamera(position);
-    this.view.setCenter(toCoordinate(camera.position));
-    this.view.setZoom(camera.zoom);
-    this.view.setRotation(0);
-
-    return true;
-  }
-
-  async animateCamera(position: MapCameraPosition, durationMillis: number): Promise<boolean> {
-    this.logicalTilt = position.tilt;
-    this.logicalPosition = position.position;
-    this.logicalZoom = position.zoom;
-    this.logicalBearing = position.bearing;
-    this.hasLogicalCameraOverride = position.tilt !== 0 || position.bearing !== 0;
-
-    const camera = toOpenLayersCamera(position);
-    const durationSeconds = (durationMillis ?? 500) / 1000;
-
-    this.view.animate({
-      center: toCoordinate(camera.position),
-      zoom: camera.zoom,
-      rotation: 0,
-      duration: durationSeconds * 1000,
-    });
-
-    return true;
-  }
-
-  async fitBounds(bounds: GeoRectBounds, padding: number): Promise<boolean> {
-    if (!bounds.southWest || !bounds.northEast) return false;
-
-    const southWest = toCoordinate(bounds.southWest);
-    const northEast = toCoordinate(bounds.northEast);
-    const extent = [
-      southWest[0],
-      southWest[1],
-      northEast[0],
-      northEast[1],
-    ];
-
-    // android-sdk の fitBounds(bounds, padding) と同じくアニメーションはしない。
-    this.view.fit(extent, {
-      padding: this.normalizePadding(padding),
-    });
-
-    return true;
-  }
-
-  getCameraPosition(): MapCameraPosition {
-    const center = this.view.getCenter();
-    if (!center) return createMapCameraPosition({
-      position: createGeoPoint({ latitude: 0, longitude: 0 }),
-      zoom: this.view.getZoom() ?? 0,
-      bearing: -(this.view.getRotation() * (180 / Math.PI)),
-      tilt: this.logicalTilt,
-      visibleRegion: this.getVisibleRegion(),
-    });
-
-    const [longitude, latitude] = toLonLat(center);
-    return createMapCameraPosition({
-      position: this.hasLogicalCameraOverride ? this.logicalPosition : createGeoPoint({ latitude, longitude }),
-      zoom: this.hasLogicalCameraOverride ? this.logicalZoom : this.view.getZoom() ?? 0,
-      bearing: this.hasLogicalCameraOverride ? this.logicalBearing : 0,
-      tilt: this.logicalTilt,
-      visibleRegion: this.getVisibleRegion(),
-    });
-  }
 
 
-  private getVisibleRegion(): VisibleRegion {
-    // this.map's own target element is deliberately rendered at 200% size (see
-    // OpenLayersMapView's mapPlaneStyle, used to give the CSS tilt/bearing
-    // transform room to rotate without showing gaps at the edges), so
-    // map.getSize() reports that oversized plane rather than what's actually
-    // visible on screen. Use the real (clipping) viewport element's size
-    // instead, or the extent ends up ~2x too wide/tall and, once the
-    // longitude span crosses 180°, GeoRectBounds picks the wrong hemisphere.
-    const viewportElement = this.holder.mapView.parentElement;
-    const size: [number, number] = viewportElement && viewportElement.clientWidth > 0 && viewportElement.clientHeight > 0
-      ? [viewportElement.clientWidth, viewportElement.clientHeight]
-      : (this.map.getSize() as [number, number] | undefined) ?? [0, 0];
-    const extent = this.view.calculateExtent(size);
-    const [bottomLeftLongitude, bottomLeftLatitude] = toLonLat([extent[0], extent[1]]);
-    const [bottomRightLongitude, bottomRightLatitude] = toLonLat([extent[2], extent[1]]);
-    const [topLeftLongitude, topLeftLatitude] = toLonLat([extent[0], extent[3]]);
-    const [topRightLongitude, topRightLatitude] = toLonLat([extent[2], extent[3]]);
-    const bottomLeft = createGeoPoint({ latitude: bottomLeftLatitude, longitude: bottomLeftLongitude });
-    const bottomRight = createGeoPoint({ latitude: bottomRightLatitude, longitude: bottomRightLongitude });
-    const topLeft = createGeoPoint({ latitude: topLeftLatitude, longitude: topLeftLongitude });
-    const topRight = createGeoPoint({ latitude: topRightLatitude, longitude: topRightLongitude });
 
-    const bounds = createGeoRectBounds();
-    bounds.extend(bottomLeft);
-    bounds.extend(bottomRight);
-    bounds.extend(topLeft);
-    bounds.extend(topRight);
 
-    return {
-      bounds,
-      nearLeft: bottomLeft,
-      nearRight: bottomRight,
-      farLeft: topLeft,
-      farRight: topRight,
-    };
-  }
+
 
   private async notifyControllersCameraChanged(camera: MapCameraPosition): Promise<void> {
     await Promise.all([
@@ -459,47 +354,6 @@ export class OpenLayersMapViewController
     void this.clearOverlays().finally(() => this.markerController.destroy());
   }
 
-  private normalizePadding(value: number | undefined): number[] {
-    if (typeof value === 'number') {
-      return [value, value, value, value];
-    }
-    return [0, 0, 0, 0];
-  }
 }
 
-/**
- * Quantize a programmatic zoom target to the nearest integer, mirroring how
- * Google Maps 2D (the project-wide camera reference) snaps zoom. Keeps
- * OpenLayers aligned with Google at fractional demo zooms (Oahu 9.5 -> 10,
- * Kiribati 4.5 -> 5) instead of rendering the true half level Google never shows.
- */
-function snapZoomToGoogle(zoom: number): number {
-  return Math.round(zoom);
-}
 
-function toOpenLayersCamera(position: MapCameraPosition): MapCameraPosition {
-  // Google Maps 2D snaps zoom to the nearest integer while OpenLayers renders
-  // the true fractional zoom, leaving the two up to half a level apart at
-  // fractional targets. Quantize programmatic targets the way Google does. Live
-  // zoom reported from gestures (view.getZoom in getCameraPosition) stays fractional.
-  if (position.tilt >= 0) return position.copy({ zoom: snapZoomToGoogle(position.zoom) });
-
-  const tiltAbs = Math.min(Math.max(Math.abs(position.tilt), 0), 60);
-  const tiltRadians = (tiltAbs * Math.PI) / 180;
-  const latitudeRadians = (Math.max(-85, Math.min(85, position.position.latitude)) * Math.PI) / 180;
-  const altitude = Math.min(
-    Math.max((171_319_879 * Math.max(Math.abs(Math.cos(latitudeRadians)), 0.01)) / (2 ** position.zoom), 100),
-    50_000_000,
-  );
-  const target = computeOffset({
-    origin: position.position,
-    distance: altitude * Math.cos(tiltRadians) * Math.tan(tiltRadians) * 1.83,
-    heading: position.bearing,
-  });
-
-  return position.copy({
-    position: target,
-    zoom: position.zoom - 0.9 * (tiltAbs / 60),
-    tilt: tiltAbs,
-  });
-}
