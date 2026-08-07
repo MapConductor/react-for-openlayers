@@ -6,7 +6,6 @@ import {
   createGeoRectBounds,
   createMapCameraPosition,
   computeOffset,
-  type CameraOptions,
   type CircleCapable,
   type CircleEvent,
   type CircleState,
@@ -276,7 +275,7 @@ export class OpenLayersMapViewController
     return true;
   }
 
-  async animateCamera(position: MapCameraPosition, options?: CameraOptions): Promise<boolean> {
+  async animateCamera(position: MapCameraPosition, durationMillis: number): Promise<boolean> {
     this.logicalTilt = position.tilt;
     this.logicalPosition = position.position;
     this.logicalZoom = position.zoom;
@@ -284,7 +283,7 @@ export class OpenLayersMapViewController
     this.hasLogicalCameraOverride = position.tilt !== 0 || position.bearing !== 0;
 
     const camera = toOpenLayersCamera(position);
-    const durationSeconds = (options?.duration ?? 500) / 1000;
+    const durationSeconds = (durationMillis ?? 500) / 1000;
 
     this.view.animate({
       center: toCoordinate(camera.position),
@@ -296,7 +295,7 @@ export class OpenLayersMapViewController
     return true;
   }
 
-  async fitBounds(bounds: GeoRectBounds, options?: CameraOptions): Promise<boolean> {
+  async fitBounds(bounds: GeoRectBounds, padding: number): Promise<boolean> {
     if (!bounds.southWest || !bounds.northEast) return false;
 
     const southWest = toCoordinate(bounds.southWest);
@@ -308,10 +307,9 @@ export class OpenLayersMapViewController
       northEast[1],
     ];
 
-    const duration = (options?.duration ?? 0) / 1000;
+    // android-sdk の fitBounds(bounds, padding) と同じくアニメーションはしない。
     this.view.fit(extent, {
-      duration: duration * 1000,
-      padding: this.normalizePadding(options?.padding ?? options?.paddings),
+      padding: this.normalizePadding(padding),
     });
 
     return true;
@@ -337,9 +335,6 @@ export class OpenLayersMapViewController
     });
   }
 
-  getBounds(): GeoRectBounds | null {
-    return this.getVisibleRegion().bounds;
-  }
 
   private getVisibleRegion(): VisibleRegion {
     // this.map's own target element is deliberately rendered at 200% size (see
@@ -464,11 +459,11 @@ export class OpenLayersMapViewController
     void this.clearOverlays().finally(() => this.markerController.destroy());
   }
 
-  private normalizePadding(value: CameraOptions['padding'] | CameraOptions['paddings']): number[] {
+  private normalizePadding(value: number | undefined): number[] {
     if (typeof value === 'number') {
       return [value, value, value, value];
     }
-    return value ? [value.top, value.right, value.bottom, value.left] : [0, 0, 0, 0];
+    return [0, 0, 0, 0];
   }
 }
 

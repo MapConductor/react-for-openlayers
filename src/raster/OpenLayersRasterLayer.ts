@@ -7,6 +7,7 @@ import {
   type RasterLayerChangeParams,
   type RasterLayerEntity,
   type RasterLayerState,
+  type RasterHeaderSupport,
 } from '@mapconductor/js-sdk-core';
 import type TileLayer from 'ol/layer/Tile';
 import type TileSource from 'ol/source/Tile';
@@ -77,11 +78,18 @@ export class OpenLayersRasterLayerRenderer {
               : undefined,
           });
         } else {
+          const headers = state.extraHeaders;
           tileSource = new XYZ({
             url: source.template,
             tileSize: source.tileSize ?? 256,
             minZoom: source.minZoom ?? undefined,
             maxZoom: source.maxZoom ?? undefined,
+            // ヘッダ指定があるときだけ fetch 経由にする。OpenLayers の既定は
+            // `<img src>` で、img にはヘッダを付けられない。指定が無いときに
+            // fetch へ寄せると、タイル 1 枚ごとの ObjectURL 生成を全利用者に課すことになる。
+            tileLoadFunction: headers && Object.keys(headers).length > 0
+              ? (tile, src) => this.loadTileWithHeaders(tile as ImageTile, src, headers)
+              : undefined,
           });
         }
         break;
@@ -130,6 +138,25 @@ export class OpenLayersRasterLayerRenderer {
       : null;
   }
 
+  /** `extraHeaders` を載せてタイルを取り、blob URL に差し替える。 */
+  private loadTileWithHeaders(tile: ImageTile, src: string, headers: Record<string, string>): void {
+    const image = tile.getImage() as HTMLImageElement;
+    void fetch(src, { headers })
+      .then(async response => {
+        if (!response.ok) throw new Error(`Tile request failed: ${response.status}`);
+        const blobUrl = URL.createObjectURL(await response.blob());
+        const release = () => URL.revokeObjectURL(blobUrl);
+        image.addEventListener('load', release, { once: true });
+        image.addEventListener('error', release, { once: true });
+        image.src = blobUrl;
+      })
+      .catch(() => {
+        // 失敗は OpenLayers 側のタイル状態（error）へ伝える。空タイルにすると
+        // 「読めなかった」ではなく「そこには何も無い」になり、再試行されない。
+        image.src = '';
+      });
+  }
+
   private loadLocalTile(tile: ImageTile, src: string): void {
     const image = tile.getImage() as HTMLImageElement;
     const request = this.parseLocalTileRequest(src);
@@ -172,6 +199,15 @@ export class OpenLayersRasterLayerRenderer {
 }
 
 export class OpenLayersRasterLayerController extends RasterLayerController<TileLayer<TileSource>> {
+  /**
+   * ヘッダ指定があるときだけ tileLoadFunction を fetch 経路に差し替える。
+   *
+   * userAgent はブラウザが上書きを許さないので、どのプロバイダでも web では効かない。
+   */
+  protected override get headerSupport(): RasterHeaderSupport {
+    return { provider: 'OpenLayers', extraHeaders: true };
+  }
+
   constructor(renderer: OpenLayersRasterLayerRenderer) {
     super({ rasterLayerManager: new RasterLayerManager(), renderer });
   }
