@@ -8,6 +8,7 @@ import {
   MarkerAnimationLayer,
   MapAttributionOverlay,
   type InfoBubbleEntry,
+  createMapContextValue,
 } from '@mapconductor/js-sdk-react';
 import {
   useCameraRestriction,
@@ -23,6 +24,7 @@ import {
   type MapViewBaseProps,
   type MarkerAnimationOverlayEntry,
   type OverlayCollector,
+  mapViewStateInternal,
 } from '@mapconductor/js-sdk-core';
 import type { MapOptions } from 'ol/Map';
 import { OpenLayersProvider, type OpenLayersConfig } from './OpenLayersProvider';
@@ -234,8 +236,8 @@ export function OpenLayersMapView({
       typedControllerRef.current = ctrl;
       const controls = containerRef.current?.querySelectorAll<HTMLElement>('.ol-control');
       controls?.forEach(control => outerContainer?.appendChild(control));
-      state.setController(ctrl);
-      state.setCameraPositionChangeListener(camera => {
+      mapViewStateInternal(state).setController(ctrl);
+      mapViewStateInternal(state).setCameraPositionChangeListener(camera => {
         setVisualTilt(camera.tilt);
         setVisualBearing(camera.bearing);
         setCameraTick(tick => tick + 1);
@@ -245,20 +247,20 @@ export function OpenLayersMapView({
       ctrl.setCameraMoveStartListener((camera: MapCameraPosition) => {
         setVisualTilt(camera.tilt);
         setVisualBearing(camera.bearing);
-        state.updateCameraPosition(camera);
+        mapViewStateInternal(state).updateCameraPosition(camera);
         onCameraMoveStartRef.current?.(camera);
       });
       ctrl.setCameraMoveListener((camera: MapCameraPosition) => {
         setVisualTilt(camera.tilt);
         setVisualBearing(camera.bearing);
-        state.updateCameraPosition(camera);
+        mapViewStateInternal(state).updateCameraPosition(camera);
         onCameraMoveRef.current?.(camera);
         setCameraTick(tick => tick + 1);
       });
       ctrl.setCameraMoveEndListener((camera: MapCameraPosition) => {
         setVisualTilt(camera.tilt);
         setVisualBearing(camera.bearing);
-        state.updateCameraPosition(camera);
+        mapViewStateInternal(state).updateCameraPosition(camera);
         onCameraMoveEndRef.current?.(camera);
         setCameraTick(tick => tick + 1);
       });
@@ -269,7 +271,7 @@ export function OpenLayersMapView({
           // これで `mapViewState.cameraPosition` が最初から権威ある値になり、
           // 拡張モジュールが `cameraPosition.visibleRegion.bounds` を初回から読める。
           const initial = typedControllerRef.current?.getCameraPosition() ?? null;
-          if (initial) state.updateCameraPosition(initial);
+          if (initial) mapViewStateInternal(state).updateCameraPosition(initial);
           setIsLoaded(true);
           onMapLoadedRef.current?.(state);
         });
@@ -324,8 +326,8 @@ export function OpenLayersMapView({
     return () => {
       cancelled = true;
       outerContainer?.querySelectorAll<HTMLElement>('.ol-control').forEach(control => control.remove());
-      state.setCameraPositionChangeListener(null);
-      state.setController(null);
+      mapViewStateInternal(state).setCameraPositionChangeListener(null);
+      mapViewStateInternal(state).setController(null);
       typedControllerRef.current = null;
       bridgeUnsubs.current.forEach(unsubscribe => unsubscribe());
       bridgeUnsubs.current = [];
@@ -355,7 +357,7 @@ export function OpenLayersMapView({
   useMarkerRenderingSupport(state, scope, controller);
 
   return (
-    <MapContext.Provider value={{ controller, isReady, isLoaded, state }}>
+    <MapContext.Provider value={createMapContextValue({ controller, isReady, isLoaded, state })}>
       <div ref={outerContainerRef} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', ...containerStyle }}>
         <div ref={containerRef} className={className} style={mapPlaneStyle} />
         {controller && <OpenLayersTiltMarkerCanvas controller={controller} active={isTilted} />}

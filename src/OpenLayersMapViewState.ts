@@ -105,7 +105,7 @@ export class OpenLayersMapViewState
 
 export function useOpenLayersMapViewState(
   params: OpenLayersMapViewStateParams = {},
-): OpenLayersMapViewState {
+): OpenLayersMapViewStateInterface {
   const [state] = useState(() => new OpenLayersMapViewState(params));
   return state;
 }
