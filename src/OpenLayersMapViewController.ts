@@ -4,10 +4,8 @@ import {
   MapUISettingsDiagnostics,
   type MapUISettings,
   type CircleCapable,
-  type CircleEvent,
   type GeoRectBounds,
   type GroundImageCapable,
-  type GroundImageEvent,
   type GeoPoint,
   type MapCameraPosition,
   type MapViewControllerInterface,
@@ -18,9 +16,7 @@ import {
   type OnMapInitializedHandler,
   type OnMarkerEventHandler,
   type PolygonCapable,
-  type PolygonEvent,
   type PolylineCapable,
-  type PolylineEvent,
   type RasterLayerCapable,
 } from '@mapconductor/js-sdk-core';
 import type Map from 'ol/Map';
@@ -191,31 +187,17 @@ export class OpenLayersMapViewController
     });
 
     this.map.on('click', (event: MapBrowserEvent) => {
+      // OpenLayers のフィーチャーヒットは DOM ではなくピクセル判定なので、
+      // マーカーだけは先にここで見る（dispatchMarkerTap では pixel を渡せない）。
       const feature = this.map.forEachFeatureAtPixel(event.pixel, candidate => candidate) as {
         getId(): string | number | undefined;
       } | undefined;
       if (feature && this.markerController.handleFeatureClick(feature)) return;
-      const clicked = fromOpenLayersEvent(event);
-      const zoom = this.view.getZoom() ?? 0;
-      const tiled = this.markerController.findTiled(clicked, zoom);
-      if (tiled?.state.clickable) {
-        this.markerController.dispatchClick(tiled.state);
-        return;
-      }
-      // While tilted, native markers are hidden (drawn as upright canvas
-      // billboards) and OpenLayers' feature hit-testing is skewed by the CSS
-      // transform, so resolve non-tiled marker clicks in the billboards' screen
-      // space instead.
-      if (!this.markerController.isNativeMarkersVisible()) {
-        const outer = this.outerOffsetFromEvent(event.originalEvent);
-        const entity = outer ? this.markerController.findAtScreen(outer) : null;
-        if (entity?.state.clickable) {
-          this.markerController.dispatchClick(entity.state);
-          return;
-        }
-      }
-      if (this.dispatchOverlayClick(clicked)) return;
-      this.notifyMapClick(clicked);
+      this.lastClickEvent = event;
+      // marker → circle → groundImage → polyline → polygon → map の一本道。
+      // 順序と先勝ちはコアの BaseMapViewController.dispatchTap が持つ。
+      this.dispatchTap(fromOpenLayersEvent(event));
+      this.lastClickEvent = null;
     });
 
     // 'contextmenu' is delivered by OpenLayers as a MapBrowserEvent at runtime
@@ -229,40 +211,6 @@ export class OpenLayersMapViewController
     if (camera) void this.notifyControllersCameraChanged(camera);
   }
 
-  private dispatchOverlayClick(clicked: GeoPoint): boolean {
-    const circle = this.circleController.find(clicked);
-    if (circle) {
-      const event: CircleEvent = { state: circle.state, clicked };
-      this.circleController.dispatchClick(event);
-      return true;
-    }
-
-    const polygon = this.polygonController.find(clicked);
-    if (polygon) {
-      const event: PolygonEvent = { state: polygon.state, clicked };
-      this.polygonController.dispatchClick(event);
-      return true;
-    }
-
-    const polyline = this.polylineController.findWithClosestPoint(clicked);
-    if (polyline) {
-      const event: PolylineEvent = {
-        state: polyline.entity.state,
-        clicked: polyline.closestPoint,
-      };
-      this.polylineController.dispatchClick(event);
-      return true;
-    }
-
-    const groundImage = this.groundImageController.find(clicked);
-    if (groundImage) {
-      const event: GroundImageEvent = { state: groundImage.state, clicked };
-      this.groundImageController.dispatchClick(event);
-      return true;
-    }
-
-    return false;
-  }
 
   override setMapInitializedListener(listener: OnMapInitializedHandler | null): void {
     super.setMapInitializedListener(listener);
@@ -326,6 +274,34 @@ export class OpenLayersMapViewController
     this.destroyed = true;
     this.map.setTarget(undefined);
     void this.clearOverlays().finally(() => this.markerController.destroy());
+  }
+
+
+  /** クリックした OpenLayers のイベント。`dispatchMarkerTap` が画面座標を要るため。 */
+  private lastClickEvent: MapBrowserEvent | null = null;
+
+  /**
+   * マーカーのヒットテストと配送。カスケードの先頭。
+   *
+   * タイル方式のマーカーと、傾き中のビルボード（OpenLayers のフィーチャー判定が
+   * CSS transform でずれるため画面座標で見る）の 2 経路を持つのでここに置く。
+   */
+  protected override dispatchMarkerTap(clicked: GeoPoint): boolean {
+    const zoom = this.view.getZoom() ?? 0;
+    const tiled = this.markerController.findTiled(clicked, zoom);
+    if (tiled?.state.clickable) {
+      this.markerController.dispatchClick(tiled.state);
+      return true;
+    }
+    if (!this.markerController.isNativeMarkersVisible() && this.lastClickEvent) {
+      const outer = this.outerOffsetFromEvent(this.lastClickEvent.originalEvent);
+      const entity = outer ? this.markerController.findAtScreen(outer) : null;
+      if (entity?.state.clickable) {
+        this.markerController.dispatchClick(entity.state);
+        return true;
+      }
+    }
+    return false;
   }
 
 }

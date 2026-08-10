@@ -258,7 +258,6 @@ declare class OpenLayersMapViewController extends BaseMapViewController implemen
     animateCamera(position: MapCameraPosition, durationMillis: number): Promise<boolean>;
     fitBounds(bounds: GeoRectBounds, padding: number): Promise<boolean>;
     private setupEvents;
-    private dispatchOverlayClick;
     setMapInitializedListener(listener: OnMapInitializedHandler | null): void;
     private notifyControllersCameraChanged;
     setOnMarkerClickListener(listener: OnMarkerEventHandler | null): void;
@@ -283,6 +282,15 @@ declare class OpenLayersMapViewController extends BaseMapViewController implemen
     private outerOffsetFromEvent;
     clearOverlays(): Promise<void>;
     destroy(): void;
+    /** クリックした OpenLayers のイベント。`dispatchMarkerTap` が画面座標を要るため。 */
+    private lastClickEvent;
+    /**
+     * マーカーのヒットテストと配送。カスケードの先頭。
+     *
+     * タイル方式のマーカーと、傾き中のビルボード（OpenLayers のフィーチャー判定が
+     * CSS transform でずれるため画面座標で見る）の 2 経路を持つのでここに置く。
+     */
+    protected dispatchMarkerTap(clicked: GeoPoint): boolean;
 }
 
 interface OpenLayersConfig extends MapConfig {
