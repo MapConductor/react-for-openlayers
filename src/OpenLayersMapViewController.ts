@@ -5,11 +5,9 @@ import {
   type MapUISettings,
   type CircleCapable,
   type CircleEvent,
-  type CircleState,
   type GeoRectBounds,
   type GroundImageCapable,
   type GroundImageEvent,
-  type GroundImageState,
   type GeoPoint,
   type MapCameraPosition,
   type MapViewControllerInterface,
@@ -17,20 +15,13 @@ import {
   type MarkerCapable,
   type MarkerState,
   type Offset,
-  type OnCircleEventHandler,
-  type OnGroundImageEventHandler,
   type OnMapInitializedHandler,
   type OnMarkerEventHandler,
-  type OnPolygonEventHandler,
-  type OnPolylineEventHandler,
   type PolygonCapable,
   type PolygonEvent,
-  type PolygonState,
   type PolylineCapable,
   type PolylineEvent,
-  type PolylineState,
   type RasterLayerCapable,
-  type RasterLayerState,
 } from '@mapconductor/js-sdk-core';
 import type Map from 'ol/Map';
 import type MapBrowserEvent from 'ol/MapBrowserEvent';
@@ -86,6 +77,22 @@ export class OpenLayersMapViewController
     initialBearing = 0,
   ) {
     super();
+
+    // Capable ファサードの既定実装がここから kind で引く。
+
+    // **登録を忘れると composition が黙って捨てられる。**
+
+    this.registerOverlayController(this.markerController);
+
+    this.registerOverlayController(this.circleController);
+
+    this.registerOverlayController(this.polylineController);
+
+    this.registerOverlayController(this.polygonController);
+
+    this.registerOverlayController(this.groundImageController);
+
+    this.registerOverlayController(this.rasterLayerController);
     this.map = holder.map;
     this.view = holder.view;
     this.camera = new OpenLayersCameraState(
@@ -262,12 +269,6 @@ export class OpenLayersMapViewController
     if (listener && !this.destroyed) queueMicrotask(() => this.notifyMapInitialized());
   }
 
-
-
-
-
-
-
   private async notifyControllersCameraChanged(camera: MapCameraPosition): Promise<void> {
     await Promise.all([
       this.markerController.onCameraChanged(camera),
@@ -279,9 +280,6 @@ export class OpenLayersMapViewController
     ]);
   }
 
-  async compositionMarkers(data: MarkerState[]): Promise<void> { await this.markerController.composition(data); }
-  async updateMarker(state: MarkerState): Promise<void> { await this.markerController.update(state); }
-  hasMarker(state: MarkerState): boolean { return this.markerController.has(state); }
   setOnMarkerClickListener(listener: OnMarkerEventHandler | null): void { this.markerController.setOnClickListener(listener); }
   setOnMarkerDragStart(listener: OnMarkerEventHandler | null): void { this.markerController.setOnDragStart(listener); }
   setOnMarkerDrag(listener: OnMarkerEventHandler | null): void { this.markerController.setOnDrag(listener); }
@@ -312,30 +310,6 @@ export class OpenLayersMapViewController
     return { x: source.clientX - rect.left, y: source.clientY - rect.top };
   }
 
-  async compositionCircles(data: CircleState[]): Promise<void> { await this.circleController.composition(data); }
-  async updateCircle(state: CircleState): Promise<void> { await this.circleController.update(state); }
-  hasCircle(state: CircleState): boolean { return this.circleController.has(state); }
-  setOnCircleClickListener(listener: OnCircleEventHandler | null): void { this.circleController.setOnClickListener(listener); }
-
-  async compositionPolylines(data: PolylineState[]): Promise<void> { await this.polylineController.composition(data); }
-  async updatePolyline(state: PolylineState): Promise<void> { await this.polylineController.update(state); }
-  hasPolyline(state: PolylineState): boolean { return this.polylineController.has(state); }
-  setOnPolylineClickListener(listener: OnPolylineEventHandler | null): void { this.polylineController.setOnClickListener(listener); }
-
-  async compositionPolygons(data: PolygonState[]): Promise<void> { await this.polygonController.composition(data); }
-  async updatePolygon(state: PolygonState): Promise<void> { await this.polygonController.update(state); }
-  hasPolygon(state: PolygonState): boolean { return this.polygonController.has(state); }
-  setOnPolygonClickListener(listener: OnPolygonEventHandler | null): void { this.polygonController.setOnClickListener(listener); }
-
-  async compositionGroundImages(data: GroundImageState[]): Promise<void> { await this.groundImageController.composition(data); }
-  async updateGroundImage(state: GroundImageState): Promise<void> { await this.groundImageController.update(state); }
-  hasGroundImage(state: GroundImageState): boolean { return this.groundImageController.has(state); }
-  setOnGroundImageClickListener(listener: OnGroundImageEventHandler | null): void { this.groundImageController.setOnClickListener(listener); }
-
-  async compositionRasterLayers(data: RasterLayerState[]): Promise<void> { await this.rasterLayerController.composition(data); }
-  async updateRasterLayer(state: RasterLayerState): Promise<void> { await this.rasterLayerController.update(state); }
-  hasRasterLayer(state: RasterLayerState): boolean { return this.rasterLayerController.has(state); }
-
   async clearOverlays(): Promise<void> {
     await Promise.all([
       this.markerController.clear(),
@@ -355,5 +329,4 @@ export class OpenLayersMapViewController
   }
 
 }
-
 
