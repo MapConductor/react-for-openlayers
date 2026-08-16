@@ -10,7 +10,9 @@ import {
 } from '@mapconductor/js-sdk-core';
 import type Map from 'ol/Map';
 import type View from 'ol/View';
-import { toLonLat } from 'ol/proj';
+// 拡張子を付けること。'ol/proj' はディレクトリ import になり、Node の ESM 解決が
+// ERR_UNSUPPORTED_DIR_IMPORT で落ちる（バンドラは通るので気付きにくい）。
+import { toLonLat } from 'ol/proj.js';
 import type { OpenLayersMapViewHolder } from './OpenLayersMapViewHolder';
 import { toCoordinate } from './helpers';
 
