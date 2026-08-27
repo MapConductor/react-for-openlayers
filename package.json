@@ -40,10 +40,10 @@
   "dependencies": {
     "@mapconductor/js-sdk-core": "^0.2.0",
     "@mapconductor/js-sdk-react": "^0.2.0",
-    "ol": "^10.2.1"
+    "ol": "^10.10.0"
   },
   "devDependencies": {
-    "react": "^19.2.7",
+    "react": "^19.2.8",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3"
   }
