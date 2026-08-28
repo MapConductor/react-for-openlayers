@@ -1,6 +1,6 @@
 {
   "name": "@mapconductor/react-for-openlayers",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "OpenLayers provider for MapConductor React SDK",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
