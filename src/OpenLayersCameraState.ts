@@ -6,8 +6,7 @@ import {
   type GeoRectBounds,
   type MapCameraPosition,
   type VisibleRegion,
-  computeOffset,
-} from '@mapconductor/js-sdk-core';
+  computeOffset, toNativeHeading, bearingFromNativeRotation, } from '@mapconductor/js-sdk-core';
 import type Map from 'ol/Map';
 import type View from 'ol/View';
 // 拡張子を付けること。'ol/proj' はディレクトリ import になり、Node の ESM 解決が
@@ -140,7 +139,7 @@ export class OpenLayersCameraState {
     if (!center) return createMapCameraPosition({
       position: createGeoPoint({ latitude: 0, longitude: 0 }),
       zoom: this.deps.view.getZoom() ?? 0,
-      bearing: -(this.deps.view.getRotation() * (180 / Math.PI)),
+      bearing: bearingFromNativeRotation(this.deps.view.getRotation() * (180 / Math.PI)),
       tilt: this.logicalTilt,
       visibleRegion: this.readVisibleRegion(),
     });
@@ -217,7 +216,7 @@ function toOpenLayersCamera(position: MapCameraPosition): MapCameraPosition {
   const target = computeOffset({
     origin: position.position,
     distance: altitude * Math.cos(tiltRadians) * Math.tan(tiltRadians) * 1.83,
-    heading: position.bearing,
+    heading: toNativeHeading(position.bearing),
   });
 
   return position.copy({
