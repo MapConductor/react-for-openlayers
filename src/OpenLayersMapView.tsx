@@ -177,7 +177,7 @@ export function OpenLayersMapView({
     top: '50%',
     width: '200%',
     height: '200%',
-    transform: `translate(-50%, -50%) rotateZ(${-visualBearing}deg) rotateX(${experimentalTilt}deg)`,
+    transform: `translate(-50%, -50%) rotateZ(${visualBearing}deg) rotateX(${experimentalTilt}deg)`,
     transformOrigin: '50% 50%',
     transformStyle: 'flat',
     willChange: 'transform',

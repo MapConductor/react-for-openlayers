@@ -3,8 +3,7 @@ import {
   MarkerTilingOptions,
   type GeoRectBounds,
   type MapConfig,
-  type MapViewControllerInterface,
-} from '@mapconductor/js-sdk-core';
+  type MapViewControllerInterface, toNativeRotation, } from '@mapconductor/js-sdk-core';
 import Map from 'ol/Map.js';
 import View from 'ol/View.js';
 import type { Extent } from 'ol/extent';
@@ -63,7 +62,7 @@ export class OpenLayersProvider extends MapProvider {
       minZoom: config.minZoom,
       maxZoom: config.maxZoom,
       extent: toExtent(config.restrictBounds),
-      rotation: -(initial?.bearing ?? 0) * (Math.PI / 180),
+      rotation: toNativeRotation(initial?.bearing ?? 0) * (Math.PI / 180),
     });
 
     const map = new Map({
