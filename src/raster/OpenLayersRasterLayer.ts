@@ -172,11 +172,18 @@ export class OpenLayersRasterLayerRenderer {
       return;
     }
 
-    void server.handleFetch(request.routeId, request).then(bytes => {
-      if (!bytes) {
+    void server.handleFetchOutcome(request.routeId, request).then(outcome => {
+      if (outcome.kind === 'failed') {
+        // Leaving the source empty marks the tile as errored in OpenLayers,
+        // which asks again later. A transparent tile here would be kept.
+        image.src = '';
+        return;
+      }
+      if (outcome.kind !== 'tile') {
         image.src = EMPTY_TILE;
         return;
       }
+      const bytes = outcome.bytes;
       const blobUrl = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: 'image/png' }));
       const release = () => URL.revokeObjectURL(blobUrl);
       image.addEventListener('load', release, { once: true });
