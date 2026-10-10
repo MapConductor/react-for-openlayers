@@ -57,7 +57,7 @@ interface OpenLayersMapViewProps extends MapViewBaseProps<OpenLayersMapViewState
     children?: ReactNode;
     markerTilingOptions?: MarkerTilingOptions;
 }
-declare function OpenLayersMapView({ state, onMapLoaded, onMapClick, onMapLongClick, onCameraMoveStart, onCameraMove, onCameraMoveEnd, maxZoom, minZoom, restrictBounds, cameraRestriction, className, containerStyle, options, onError, children, markerTilingOptions, }: OpenLayersMapViewProps): react.JSX.Element;
+declare function OpenLayersMapView({ state, mapStyle, onStyleDiagnostics, onMapLoaded, onMapClick, onMapLongClick, onCameraMoveStart, onCameraMove, onCameraMoveEnd, maxZoom, minZoom, restrictBounds, cameraRestriction, className, containerStyle, options, onError, children, markerTilingOptions, }: OpenLayersMapViewProps): react.JSX.Element;
 
 declare class OpenLayersMapViewHolder extends MapViewHolderBase<HTMLElement, Map> {
     readonly mapView: HTMLElement;

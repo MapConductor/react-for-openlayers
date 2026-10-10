@@ -11,6 +11,7 @@ import {
   createMapContextValue,
 } from '@mapconductor/js-sdk-react';
 import {
+  useMapViewStyle,
   useCameraRestriction,
   useMapUISettings,
   useMarkerRenderingSupport,
@@ -134,6 +135,8 @@ function OpenLayersTiltMarkerCanvas({
 
 export function OpenLayersMapView({
   state,
+  mapStyle,
+  onStyleDiagnostics,
   onMapLoaded,
   onMapClick,
   onMapLongClick,
@@ -156,6 +159,10 @@ export function OpenLayersMapView({
   const [provider] = useState(() => new OpenLayersProvider());
   const [scope] = useState(() => new MapViewScope());
   const [controller, setController] = useState<OpenLayersMapViewController | null>(null);
+
+  // 地図の見た目。何が起きるかはこのバックエンドが宣言した能力で決まるので、
+  // ここにプロバイダ固有の分岐は無い。
+  useMapViewStyle(state, controller, mapStyle, onStyleDiagnostics);
   const [isReady, setIsReady] = useState(false);
   // `onMapLoaded` と同じ瞬間を「値」として持つ。イベントを取り逃した後から
   // マウントした子（examples の Three.js overlay 等）も読めるようにするため。
