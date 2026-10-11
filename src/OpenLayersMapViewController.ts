@@ -23,6 +23,8 @@ import type Map from 'ol/Map';
 import type MapBrowserEvent from 'ol/MapBrowserEvent';
 import type { Types as MapBrowserEventTypes } from 'ol/MapBrowserEventType';
 import type View from 'ol/View';
+import TileLayer from 'ol/layer/Tile.js';
+import type { OpenLayersMapDesignType } from './OpenLayersDesign';
 import DragPan from 'ol/interaction/DragPan.js';
 import DragZoom from 'ol/interaction/DragZoom.js';
 import DoubleClickZoom from 'ol/interaction/DoubleClickZoom.js';
@@ -55,6 +57,8 @@ export class OpenLayersMapViewController
     RasterLayerCapable {
   private readonly map: Map;
   private readonly view: View;
+  /** The basemap tile layer, or null for `OpenLayersDesign.None`. */
+  private baseLayer: TileLayer | null;
 
   /** 論理カメラの保持とカメラ操作。状態を持つのでコンストラクタで組み立てて注入する。 */
   private readonly camera: OpenLayersCameraState;
@@ -71,8 +75,10 @@ export class OpenLayersMapViewController
     private readonly rasterLayerController: OpenLayersRasterLayerController,
     initialTilt = 0,
     initialBearing = 0,
+    baseLayer: TileLayer | null = null,
   ) {
     super();
+    this.baseLayer = baseLayer;
 
     // Capable ファサードの既定実装がここから kind で引く。
 
@@ -115,6 +121,18 @@ export class OpenLayersMapViewController
   }
 
   getMap(): Map { return this.map; }
+
+  /**
+   * Swaps the basemap tile layer in place. It goes in at index 0: the
+   * overlay layers carry no zIndex of their own, so insertion order is what
+   * keeps the basemap underneath. Called by the view state's
+   * `mapDesignType` setter.
+   */
+  setMapDesignType(design: OpenLayersMapDesignType): void {
+    if (this.baseLayer) this.map.removeLayer(this.baseLayer);
+    this.baseLayer = design.tileSource ? new TileLayer({ source: design.tileSource }) : null;
+    if (this.baseLayer) this.map.getLayers().insertAt(0, this.baseLayer);
+  }
 
   /**
    * OpenLayers keeps its interactions in one collection, so each is matched by
