@@ -26,6 +26,7 @@ import {
   type MarkerAnimationOverlayEntry,
   type OverlayCollector,
   mapViewStateInternal,
+  markerIconExtentPx,
 } from '@mapconductor/js-sdk-core';
 import type { MapOptions } from 'ol/Map';
 import { OpenLayersProvider, type OpenLayersConfig } from './OpenLayersProvider';
@@ -391,12 +392,12 @@ export function OpenLayersMapView({
             {bubbleEntries.map(entry => {
               const positionOffset = controller.holder.toScreenOffset(entry.positionProvider());
               const icon = entry.icon;
-              const iconPixelSize = icon ? icon.iconSize * icon.scale : 0;
+              const iconPixelSize = markerIconExtentPx(icon);
               return (
                 <InfoBubbleOverlay
                   key={entry.id}
                   positionOffset={positionOffset}
-                  iconSize={{ width: iconPixelSize, height: iconPixelSize }}
+                  iconSize={iconPixelSize}
                   iconOffset={icon ? icon.anchor : { x: 0.5, y: 0.5 }}
                   infoAnchorOffset={icon ? icon.infoAnchor : { x: 0.5, y: 0.5 }}
                   tailOffset={entry.tailOffset}
