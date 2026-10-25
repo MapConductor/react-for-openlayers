@@ -3,6 +3,7 @@ import TileSource from 'ol/source/Tile';
 import * as react from 'react';
 import { CSSProperties, ReactNode } from 'react';
 import Map, { MapOptions } from 'ol/Map';
+import TileLayer$1 from 'ol/layer/Tile.js';
 import View from 'ol/View';
 import Feature from 'ol/Feature';
 import { Point } from 'ol/geom';
@@ -57,7 +58,7 @@ interface OpenLayersMapViewProps extends MapViewBaseProps<OpenLayersMapViewState
     children?: ReactNode;
     markerTilingOptions?: MarkerTilingOptions;
 }
-declare function OpenLayersMapView({ state, onMapLoaded, onMapClick, onMapLongClick, onCameraMoveStart, onCameraMove, onCameraMoveEnd, maxZoom, minZoom, restrictBounds, cameraRestriction, className, containerStyle, options, onError, children, markerTilingOptions, }: OpenLayersMapViewProps): react.JSX.Element;
+declare function OpenLayersMapView({ state, mapStyle, onStyleDiagnostics, onMapLoaded, onMapClick, onMapLongClick, onCameraMoveStart, onCameraMove, onCameraMoveEnd, maxZoom, minZoom, restrictBounds, cameraRestriction, className, containerStyle, options, onError, children, markerTilingOptions, }: OpenLayersMapViewProps): react.JSX.Element;
 
 declare class OpenLayersMapViewHolder extends MapViewHolderBase<HTMLElement, Map> {
     readonly mapView: HTMLElement;
@@ -236,12 +237,21 @@ declare class OpenLayersMapViewController extends BaseMapViewController implemen
     private readonly rasterLayerController;
     private readonly map;
     private readonly view;
+    /** The basemap tile layer, or null for `OpenLayersDesign.None`. */
+    private baseLayer;
     /** 論理カメラの保持とカメラ操作。状態を持つのでコンストラクタで組み立てて注入する。 */
     private readonly camera;
     private destroyed;
     private isCameraMoving;
-    constructor(holder: OpenLayersMapViewHolder, markerController: OpenLayersMarkerController, circleController: OpenLayersCircleController, polylineController: OpenLayersPolylineController, polygonController: OpenLayersPolygonController, groundImageController: OpenLayersGroundImageController, rasterLayerController: OpenLayersRasterLayerController, initialTilt?: number, initialBearing?: number);
+    constructor(holder: OpenLayersMapViewHolder, markerController: OpenLayersMarkerController, circleController: OpenLayersCircleController, polylineController: OpenLayersPolylineController, polygonController: OpenLayersPolygonController, groundImageController: OpenLayersGroundImageController, rasterLayerController: OpenLayersRasterLayerController, initialTilt?: number, initialBearing?: number, baseLayer?: TileLayer$1 | null);
     getMap(): Map;
+    /**
+     * Swaps the basemap tile layer in place. It goes in at index 0: the
+     * overlay layers carry no zIndex of their own, so insertion order is what
+     * keeps the basemap underneath. Called by the view state's
+     * `mapDesignType` setter.
+     */
+    setMapDesignType(design: OpenLayersMapDesignType): void;
     /**
      * OpenLayers keeps its interactions in one collection, so each is matched by
      * type and switched with `setActive`. Interactions MapConductor adds itself

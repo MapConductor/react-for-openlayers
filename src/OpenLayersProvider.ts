@@ -72,12 +72,8 @@ export class OpenLayersProvider extends MapProvider {
     });
 
     const design = config.mapDesignType;
-    if (design.tileSource) {
-      const tileLayer = new TileLayer({
-        source: design.tileSource,
-      });
-      map.addLayer(tileLayer);
-    }
+    const baseLayer = design.tileSource ? new TileLayer({ source: design.tileSource }) : null;
+    if (baseLayer) map.addLayer(baseLayer);
 
     const holder = new OpenLayersMapViewHolder(container, map, view);
     const markerRenderer = new OpenLayersMarkerOverlayRenderer(holder);
@@ -98,6 +94,7 @@ export class OpenLayersProvider extends MapProvider {
       rasterLayerController,
       initial?.tilt ?? 0,
       initial?.bearing ?? 0,
+      baseLayer,
     );
     return this.controller;
   }

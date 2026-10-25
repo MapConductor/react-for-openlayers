@@ -254,7 +254,14 @@ export class OpenLayersMarkerController extends AbstractMarkerController<Feature
 
     this.tileRouteId ??= `mc-openlayers-tile-${generateId()}`;
     const server = LocalTileServer.startServer();
-    const renderer = new MarkerTileRenderer(tiledStates, 256, this.tilingOptions.iconScaleCallback ?? undefined);
+    const renderer = new MarkerTileRenderer(
+      tiledStates,
+      256,
+      this.tilingOptions.iconScaleCallback ?? undefined,
+      1.0,
+      false,
+      this.tilingOptions.declutterPx,
+    );
     this.tileRenderer = renderer;
     this.tileVersion++;
     server.register(this.tileRouteId, renderer);
