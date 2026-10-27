@@ -313,7 +313,8 @@ export class OpenLayersMapViewController
     }
     if (!this.markerController.isNativeMarkersVisible() && this.lastClickEvent) {
       const outer = this.outerOffsetFromEvent(this.lastClickEvent.originalEvent);
-      const entity = outer ? this.markerController.findAtScreen(outer) : null;
+      const pointerType = (this.lastClickEvent.originalEvent as PointerEvent | undefined)?.pointerType === 'touch' ? 'touch' : 'mouse';
+      const entity = outer ? this.markerController.findAtScreen(outer, pointerType) : null;
       if (entity?.state.clickable) {
         this.markerController.dispatchClick(entity.state);
         return true;

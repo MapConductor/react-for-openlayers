@@ -2,14 +2,16 @@ import {
   AbstractMarkerController,
   LocalTileServer,
   MARKER_HIT_RADIUS_MOUSE_PX,
+  MARKER_HIT_RADIUS_TOUCH_PX,
   MarkerManager,
   MarkerTileRenderer,
   MarkerTilingOptions,
   RasterLayerSource,
-  Settings,
   createDefaultIcon,
   createGeoPoint,
   createRasterLayerState,
+  markerHitShape,
+  pickMarkerHit,
   type GeoPoint,
   type MarkerEntity,
   type MarkerState,
@@ -102,42 +104,29 @@ export class OpenLayersMarkerController extends AbstractMarkerController<Feature
   /**
    * Hit-tests non-tiled markers against a screen point in the tilt-aware viewport
    * space used by the canvas billboards (see holder.toScreenOffset). Returns the
-   * top-most marker whose upright icon rectangle contains the point, falling back
-   * to the nearest within the tap tolerance. Used for clicks while tilted, where
-   * OpenLayers' own feature hit-testing is skewed by the CSS transform. Mirrors
-   * HERE's `find`.
+   * top-most marker whose drawn pin (label included, `markerHitShape`) contains
+   * the point, falling back to the nearest within the pointer's slop (none for a
+   * mouse, MARKER_HIT_RADIUS_TOUCH_PX for a finger); chosen by the core
+   * `pickMarkerHit`. Used for clicks while tilted, where OpenLayers' own feature
+   * hit-testing — which is by drawn pixel — is skewed by the CSS transform. It
+   * used to test the whole square bitmap plus `Settings.Default.tapTolerance`
+   * (48 px). Mirrors HERE's `find`.
    */
-  findAtScreen(touch: Offset): MarkerEntity<Feature<Point>> | null {
+  findAtScreen(touch: Offset, pointerType: 'touch' | 'mouse' = 'mouse'): MarkerEntity<Feature<Point>> | null {
     const holder = this.renderer.holder;
-    const tolerance = Settings.Default.tapTolerance;
-    let bestOnIcon: MarkerEntity<Feature<Point>> | null = null;
-    let bestOnIconY = -Infinity;
-    let bestNear: MarkerEntity<Feature<Point>> | null = null;
-    let bestNearDistSq = Infinity;
-    for (const entity of this.markerManager.allEntities()) {
-      if (entity.marker === null) continue; // tiled markers are hit-tested via findTiled
-      const markerScreen = holder.toScreenOffset(entity.state.position);
-      const icon = (entity.state.icon ?? createDefaultIcon()).toBitmapIcon();
-      const dx = touch.x - markerScreen.x;
-      const dy = touch.y - markerScreen.y;
-      const left = -icon.anchor.x * icon.size.width;
-      const right = (1 - icon.anchor.x) * icon.size.width;
-      const top = -icon.anchor.y * icon.size.height;
-      const bottom = (1 - icon.anchor.y) * icon.size.height;
-      if (dx >= left && dx <= right && dy >= top && dy <= bottom) {
-        if (markerScreen.y > bestOnIconY) {
-          bestOnIconY = markerScreen.y;
-          bestOnIcon = entity;
-        }
-      } else if (dx >= left - tolerance && dx <= right + tolerance && dy >= top - tolerance && dy <= bottom + tolerance) {
-        const distSq = dx * dx + dy * dy;
-        if (distSq < bestNearDistSq) {
-          bestNearDistSq = distSq;
-          bestNear = entity;
-        }
-      }
-    }
-    return bestOnIcon ?? bestNear;
+    const tolerance = pointerType === 'touch' ? MARKER_HIT_RADIUS_TOUCH_PX : MARKER_HIT_RADIUS_MOUSE_PX;
+    return (
+      pickMarkerHit(
+        touch,
+        // tiled markers are hit-tested via findTiled
+        this.markerManager.allEntities().filter(entity => entity.marker !== null),
+        entity => ({
+          anchorScreen: holder.toScreenOffset(entity.state.position),
+          ...markerHitShape((entity.state.icon ?? createDefaultIcon()).toBitmapIcon()),
+        }),
+        tolerance,
+      )?.item ?? null
+    );
   }
 
   override async clear(): Promise<void> {
