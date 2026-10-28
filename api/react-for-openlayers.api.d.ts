@@ -320,4 +320,5 @@ declare class OpenLayersProvider extends MapProvider {
     destroy(): void;
 }
 
-export { type OpenLayersConfig, OpenLayersDesign, type OpenLayersMapDesignType, OpenLayersMapView, OpenLayersMapViewController, OpenLayersMapViewHolder, type OpenLayersMapViewProps, OpenLayersMapViewState, type OpenLayersMapViewStateInterface, type OpenLayersMapViewStateParams, OpenLayersProvider, useOpenLayersMapViewState };
+export { OpenLayersDesign, OpenLayersMapView, OpenLayersMapViewController, OpenLayersMapViewHolder, OpenLayersMapViewState, OpenLayersProvider, useOpenLayersMapViewState };
+export type { OpenLayersConfig, OpenLayersMapDesignType, OpenLayersMapViewProps, OpenLayersMapViewStateInterface, OpenLayersMapViewStateParams };
