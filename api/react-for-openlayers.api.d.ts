@@ -127,12 +127,15 @@ declare class OpenLayersMarkerController extends AbstractMarkerController<Featur
     /**
      * Hit-tests non-tiled markers against a screen point in the tilt-aware viewport
      * space used by the canvas billboards (see holder.toScreenOffset). Returns the
-     * top-most marker whose upright icon rectangle contains the point, falling back
-     * to the nearest within the tap tolerance. Used for clicks while tilted, where
-     * OpenLayers' own feature hit-testing is skewed by the CSS transform. Mirrors
-     * HERE's `find`.
+     * top-most marker whose drawn pin (label included, `markerHitShape`) contains
+     * the point, falling back to the nearest within the pointer's slop (none for a
+     * mouse, MARKER_HIT_RADIUS_TOUCH_PX for a finger); chosen by the core
+     * `pickMarkerHit`. Used for clicks while tilted, where OpenLayers' own feature
+     * hit-testing — which is by drawn pixel — is skewed by the CSS transform. It
+     * used to test the whole square bitmap plus `Settings.Default.tapTolerance`
+     * (48 px). Mirrors HERE's `find`.
      */
-    findAtScreen(touch: Offset): MarkerEntity<Feature<Point>> | null;
+    findAtScreen(touch: Offset, pointerType?: 'touch' | 'mouse'): MarkerEntity<Feature<Point>> | null;
     clear(): Promise<void>;
     destroy(): void;
     protected shouldTile(state: MarkerState, totalCount: number): boolean;
