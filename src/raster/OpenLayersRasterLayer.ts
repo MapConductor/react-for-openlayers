@@ -16,14 +16,9 @@ import TileLayerClass from 'ol/layer/Tile.js';
 import XYZ from 'ol/source/XYZ.js';
 import { renderXYZTemplate } from 'ol/uri.js';
 import { OpenLayersMapViewHolder } from '../OpenLayersMapViewHolder';
+import { parseLocalTileRequest, parseLocalTileTemplate } from './localTileUrl';
 
 const EMPTY_TILE = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
-
-interface LocalTileTemplate {
-  routeId: string;
-  tileSize: number;
-  requiresDirectLoad: boolean;
-}
 
 export class OpenLayersRasterLayerRenderer {
   constructor(readonly holder: OpenLayersMapViewHolder) {}
@@ -54,7 +49,7 @@ export class OpenLayersRasterLayerRenderer {
 
     switch (source.type) {
       case 'UrlTemplate': {
-        const local = this.parseLocalTileTemplate(source.template);
+        const local = parseLocalTileTemplate(source.template);
         if (local) {
           const tileSize = source.tileSize ?? local.tileSize;
           tileSource = new XYZ({
@@ -71,6 +66,11 @@ export class OpenLayersRasterLayerRenderer {
               tileCoord[2],
             ),
             tileSize,
+            // A `@2x` route sends 512px images for its 256px grid. The canvas
+            // renderer already draws each image into its grid cell whatever
+            // its size; this tells OpenLayers the image is denser, so pixel
+            // reads (getData) land on the right image pixel too.
+            tilePixelRatio: local.pixelRatio,
             minZoom: source.minZoom ?? undefined,
             maxZoom: source.maxZoom ?? undefined,
             tileLoadFunction: local.requiresDirectLoad
@@ -124,20 +124,6 @@ export class OpenLayersRasterLayerRenderer {
     return layer;
   }
 
-  private parseLocalTileTemplate(template: string): LocalTileTemplate | null {
-    if (template.startsWith('mc-local-tile://')) {
-      const url = new URL(template);
-      const tileSize = Number(url.pathname.split('/').filter(Boolean)[0]);
-      return Number.isFinite(tileSize)
-        ? { routeId: url.hostname, tileSize, requiresDirectLoad: true }
-        : null;
-    }
-    const match = template.match(/^\/?__tiles\/([^/]+)\/(\d+)\//);
-    return match
-      ? { routeId: match[1], tileSize: Number(match[2]), requiresDirectLoad: false }
-      : null;
-  }
-
   /** `extraHeaders` を載せてタイルを取り、blob URL に差し替える。 */
   private loadTileWithHeaders(tile: ImageTile, src: string, headers: Record<string, string>): void {
     const image = tile.getImage() as HTMLImageElement;
@@ -159,7 +145,7 @@ export class OpenLayersRasterLayerRenderer {
 
   private loadLocalTile(tile: ImageTile, src: string): void {
     const image = tile.getImage() as HTMLImageElement;
-    const request = this.parseLocalTileRequest(src);
+    const request = parseLocalTileRequest(src);
     if (!request) {
       image.src = EMPTY_TILE;
       return;
@@ -190,18 +176,6 @@ export class OpenLayersRasterLayerRenderer {
       image.addEventListener('error', release, { once: true });
       image.src = blobUrl;
     });
-  }
-
-  private parseLocalTileRequest(src: string): { routeId: string; x: number; y: number; z: number } | null {
-    const url = new URL(src);
-    if (url.protocol !== 'mc-local-tile:') return null;
-    const segments = url.pathname.split('/').filter(Boolean);
-    if (segments.length < 4) return null;
-    const z = Number(segments.at(-3));
-    const x = Number(segments.at(-2));
-    const y = Number(segments.at(-1)?.replace(/\.png$/, ''));
-    if (![z, x, y].every(Number.isFinite)) return null;
-    return { routeId: url.hostname, x, y, z };
   }
 }
 

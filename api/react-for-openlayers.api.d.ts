@@ -103,6 +103,8 @@ declare class OpenLayersMarkerController extends AbstractMarkerController<Featur
     private tileRenderer;
     private tileRouteId;
     private tileVersion;
+    /** Device pixels per CSS pixel the current tiles are drawn at. */
+    private tilePixelRatio;
     private tileGeneration;
     private readonly translateInteraction;
     private suppressClickId;
@@ -210,11 +212,9 @@ declare class OpenLayersRasterLayerRenderer {
     onCameraChanged(_mapCameraPosition: MapCameraPosition): Promise<void>;
     onPostProcess(): Promise<void>;
     private create;
-    private parseLocalTileTemplate;
     /** `extraHeaders` を載せてタイルを取り、blob URL に差し替える。 */
     private loadTileWithHeaders;
     private loadLocalTile;
-    private parseLocalTileRequest;
 }
 declare class OpenLayersRasterLayerController extends RasterLayerController<TileLayer<TileSource>> {
     /**
