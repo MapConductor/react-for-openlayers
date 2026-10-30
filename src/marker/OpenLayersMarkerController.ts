@@ -12,6 +12,7 @@ import {
   createRasterLayerState,
   markerHitShape,
   pickMarkerHit,
+  tilePixelRatio,
   type GeoPoint,
   type MarkerEntity,
   type MarkerState,
@@ -22,6 +23,7 @@ import type Feature from 'ol/Feature';
 import type { Point } from 'ol/geom';
 import Translate, { type TranslateEvent } from 'ol/interaction/Translate.js';
 import { toLonLat } from 'ol/proj.js';
+import { localTileUrlTemplate } from '../raster/localTileUrl';
 import { OpenLayersMarkerOverlayRenderer } from './OpenLayersMarkerOverlayRenderer';
 
 const MARKER_DRAG_THRESHOLD_PX = 3;
@@ -32,6 +34,8 @@ export class OpenLayersMarkerController extends AbstractMarkerController<Feature
   private tileRenderer: MarkerTileRenderer<MarkerState> | null = null;
   private tileRouteId: string | null = null;
   private tileVersion = 0;
+  /** Device pixels per CSS pixel the current tiles are drawn at. */
+  private tilePixelRatio = 1;
   private tileGeneration = 0;
   private readonly translateInteraction: Translate;
   private suppressClickId: string | null = null;
@@ -243,6 +247,9 @@ export class OpenLayersMarkerController extends AbstractMarkerController<Feature
 
     this.tileRouteId ??= `mc-openlayers-tile-${generateId()}`;
     const server = LocalTileServer.startServer();
+    // Tiles are laid out as 256 CSS pixels; drawing them at the display's ratio
+    // keeps pins and labels sharp instead of stretching a 1x image.
+    this.tilePixelRatio = tilePixelRatio();
     const renderer = new MarkerTileRenderer(
       tiledStates,
       256,
@@ -250,6 +257,7 @@ export class OpenLayersMarkerController extends AbstractMarkerController<Feature
       1.0,
       false,
       this.tilingOptions.declutterPx,
+      this.tilePixelRatio,
     );
     this.tileRenderer = renderer;
     this.tileVersion++;
@@ -264,10 +272,16 @@ export class OpenLayersMarkerController extends AbstractMarkerController<Feature
         routeId: this.tileRouteId,
         tileSize: 256,
         cacheKey: String(this.tileVersion),
+        pixelRatio: this.tilePixelRatio,
       });
     } else {
       await renderer.preloadIcons();
-      template = `mc-local-tile://${this.tileRouteId}/256/${this.tileVersion}/{z}/{x}/{y}.png`;
+      template = localTileUrlTemplate({
+        routeId: this.tileRouteId,
+        tileSize: 256,
+        cacheKey: String(this.tileVersion),
+        pixelRatio: this.tilePixelRatio,
+      });
     }
 
     if (generation !== this.tileGeneration) return;
