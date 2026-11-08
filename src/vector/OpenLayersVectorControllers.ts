@@ -44,21 +44,18 @@ import IconClass from 'ol/style/Icon.js';
 import ImageLayerClass from 'ol/layer/Image.js';
 import StaticClass from 'ol/source/ImageStatic.js';
 import { OpenLayersMapViewHolder } from '../OpenLayersMapViewHolder';
-import { toCoordinate } from '../helpers';
-
-const VECTOR_BASE_Z_INDEX = 400;
-const GROUND_IMAGE_BASE_Z_INDEX = 300;
+import { overlayLayerZIndex, toCoordinate } from '../helpers';
 
 function vectorLayer<G extends Geometry>(
   holder: OpenLayersMapViewHolder,
-  kind: string,
+  kind: 'circle' | 'polyline' | 'polygon',
   id: string,
   zIndex: number,
 ): VectorLayer<VectorSource<Feature<G>>> {
   const source = new VectorSourceClass<Feature<G>>();
   const layer = new VectorLayerClass({
     source,
-    zIndex: VECTOR_BASE_Z_INDEX + Math.max(-100, Math.min(100, zIndex)),
+    zIndex: overlayLayerZIndex(kind, zIndex),
   });
 
   layer.set('name', `mc-${kind}-${id}`);
@@ -301,7 +298,7 @@ export class OpenLayersGroundImageRenderer extends AbstractGroundImageOverlayRen
     const source = new StaticClass({ url: state.imageUrl, imageExtent: extent });
     const layer = new ImageLayerClass({
       source,
-      zIndex: GROUND_IMAGE_BASE_Z_INDEX,
+      zIndex: overlayLayerZIndex('groundImage'),
       opacity: state.opacity,
     });
     layer.set('name', `mc-ground-image-${state.id}`);
