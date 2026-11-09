@@ -285,13 +285,13 @@ export class OpenLayersMapViewController
   }
 
   async clearOverlays(): Promise<void> {
-    await Promise.all([
-      this.markerController.clear(),
-      this.circleController.clear(),
-      this.polylineController.clear(),
-      this.polygonController.clear(),
-      this.groundImageController.clear(),
-      this.rasterLayerController.clear(),
+    await this.clearOverlayControllers([
+      this.markerController,
+      this.circleController,
+      this.polylineController,
+      this.polygonController,
+      this.groundImageController,
+      this.rasterLayerController,
     ]);
   }
 

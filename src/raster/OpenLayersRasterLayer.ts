@@ -15,6 +15,7 @@ import type ImageTile from 'ol/ImageTile';
 import TileLayerClass from 'ol/layer/Tile.js';
 import XYZ from 'ol/source/XYZ.js';
 import { renderXYZTemplate } from 'ol/uri.js';
+import { overlayLayerZIndex } from '../helpers';
 import { OpenLayersMapViewHolder } from '../OpenLayersMapViewHolder';
 import { parseLocalTileRequest, parseLocalTileTemplate } from './localTileUrl';
 
@@ -117,7 +118,9 @@ export class OpenLayersRasterLayerRenderer {
     const layer = new TileLayerClass({
       source: tileSource,
       opacity: state.opacity,
-      zIndex: 250 + Math.max(-100, Math.min(100, state.zIndex)),
+      // Marker tiles are mounted as a raster but belong with the markers (under the native
+      // marker layer, over the shapes).
+      zIndex: state.id === 'mc-marker-tiles' ? overlayLayerZIndex('marker', 0) : overlayLayerZIndex('rasterLayer', state.zIndex),
     });
 
     this.holder.map.addLayer(layer);
