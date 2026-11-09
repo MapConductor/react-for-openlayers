@@ -1,4 +1,4 @@
-import { MapDesignTypeInterface, AttributionRule, MapViewStateInterface, MapViewState, MapCameraPosition, MapViewControllerInterface, MapViewBaseProps, GeoRectBounds, MarkerTilingOptions, MapViewHolderBase, GeoPointInterface, Offset, GeoPoint, AbstractMarkerOverlayRenderer, AddParams, ChangeParams, MarkerEntity, AbstractMarkerController, RasterLayerState, MarkerState, CircleController, AbstractCircleOverlayRenderer, CircleState, CircleEntity, PolylineController, AbstractPolylineOverlayRenderer, PolylineState, PolylineEntity, PolygonController, AbstractPolygonOverlayRenderer, PolygonState, PolygonEntity, GroundImageController, AbstractGroundImageOverlayRenderer, GroundImageState, GroundImageEntity, RasterLayerController, RasterHeaderSupport, RasterLayerAddParams, RasterLayerChangeParams, RasterLayerEntity, BaseMapViewController, MarkerCapable, CircleCapable, PolylineCapable, PolygonCapable, GroundImageCapable, RasterLayerCapable, MapUISettings, OnMapInitializedHandler, OnMarkerEventHandler, MarkerAnimationOverlayHost, MapConfig, MapProvider } from '@mapconductor/js-sdk-core';
+import { MapDesignTypeInterface, AttributionRule, MapViewStateInterface, MapViewState, MapCameraPosition, MapViewControllerInterface, MapViewBaseProps, GeoRectBounds, MarkerTilingOptions, PolylineTilingOptions, MapViewHolderBase, GeoPointInterface, Offset, GeoPoint, AbstractMarkerOverlayRenderer, AddParams, ChangeParams, MarkerEntity, AbstractMarkerController, RasterLayerState, MarkerState, CircleController, AbstractCircleOverlayRenderer, CircleState, CircleEntity, PolylineController, AbstractPolylineOverlayRenderer, PolylineState, PolylineEntity, PolygonController, AbstractPolygonOverlayRenderer, PolygonState, PolygonEntity, GroundImageController, AbstractGroundImageOverlayRenderer, GroundImageState, GroundImageEntity, RasterLayerController, RasterHeaderSupport, RasterLayerAddParams, RasterLayerChangeParams, RasterLayerEntity, BaseMapViewController, MarkerCapable, CircleCapable, PolylineCapable, PolygonCapable, GroundImageCapable, RasterLayerCapable, MapUISettings, OnMapInitializedHandler, OnMarkerEventHandler, MarkerAnimationOverlayHost, MapConfig, MapProvider } from '@mapconductor/js-sdk-core';
 import TileSource from 'ol/source/Tile';
 import * as react from 'react';
 import { CSSProperties, ReactNode } from 'react';
@@ -57,8 +57,14 @@ interface OpenLayersMapViewProps extends MapViewBaseProps<OpenLayersMapViewState
     onError?: (error: Error) => void;
     children?: ReactNode;
     markerTilingOptions?: MarkerTilingOptions;
+    /**
+     * When to draw polylines as raster tiles ({@link PolylineTilingOptions.Default} if omitted).
+     * Read when the map is created; a later value applies from the next time the polylines are
+     * handed to the map.
+     */
+    polylineTilingOptions?: PolylineTilingOptions;
 }
-declare function OpenLayersMapView({ state, mapStyle, onStyleDiagnostics, onMapLoaded, onMapClick, onMapLongClick, onCameraMoveStart, onCameraMove, onCameraMoveEnd, maxZoom, minZoom, restrictBounds, cameraRestriction, className, containerStyle, options, onError, children, markerTilingOptions, }: OpenLayersMapViewProps): react.JSX.Element;
+declare function OpenLayersMapView({ state, mapStyle, onStyleDiagnostics, onMapLoaded, onMapClick, onMapLongClick, onCameraMoveStart, onCameraMove, onCameraMoveEnd, maxZoom, minZoom, restrictBounds, cameraRestriction, className, containerStyle, options, onError, children, markerTilingOptions, polylineTilingOptions, }: OpenLayersMapViewProps): react.JSX.Element;
 
 declare class OpenLayersMapViewHolder extends MapViewHolderBase<HTMLElement, Map> {
     readonly mapView: HTMLElement;
@@ -313,6 +319,11 @@ interface OpenLayersConfig extends MapConfig {
     /** Restricts panning/zooming so the viewport cannot leave this rectangle. */
     restrictBounds?: GeoRectBounds;
     markerTilingOptions?: MarkerTilingOptions;
+    /**
+     * When to draw polylines as raster tiles; {@link PolylineTilingOptions.Default} if omitted.
+     * The controller's `setPolylineTilingOptions` replaces it later.
+     */
+    polylineTilingOptions?: PolylineTilingOptions;
     options?: Omit<MapOptions, 'target'>;
 }
 declare class OpenLayersProvider extends MapProvider {
