@@ -13,11 +13,11 @@ import {
 import {
   useMapViewStyle,
   useCameraRestriction,
-  useMapUISettings,
+  useMapUISettings, usePolylineTilingOptions,
   useMarkerRenderingSupport,
 } from '@mapconductor/js-sdk-react/internal';
 import {
-  MarkerTilingOptions,
+  MarkerTilingOptions, PolylineTilingOptions,
   createDefaultIcon,
   type GeoPoint,
   type GeoRectBounds,
@@ -44,6 +44,12 @@ export interface OpenLayersMapViewProps extends MapViewBaseProps<OpenLayersMapVi
   onError?: (error: Error) => void;
   children?: ReactNode;
   markerTilingOptions?: MarkerTilingOptions;
+  /**
+   * When to draw polylines as raster tiles ({@link PolylineTilingOptions.Default} if omitted).
+   * Read when the map is created; a later value applies from the next time the polylines are
+   * handed to the map.
+   */
+  polylineTilingOptions?: PolylineTilingOptions;
 }
 
 /**
@@ -154,6 +160,7 @@ export function OpenLayersMapView({
   onError,
   children,
   markerTilingOptions,
+  polylineTilingOptions,
 }: OpenLayersMapViewProps) {
   const outerContainerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -235,6 +242,7 @@ export function OpenLayersMapView({
       minZoom,
       restrictBounds,
       markerTilingOptions,
+      polylineTilingOptions,
       options,
     };
 
@@ -355,6 +363,7 @@ export function OpenLayersMapView({
   ]);
 
   useMapUISettings(state, controller);
+  usePolylineTilingOptions(controller, polylineTilingOptions);
   // マップ生成時 config だけでなく、prop の変化にも追随させる（android-sdk 相当）。
   useCameraRestriction(controller, { cameraRestriction, restrictBounds, minZoom, maxZoom });
 

@@ -9,6 +9,7 @@ import {
   type RasterLayerState,
   type RasterHeaderSupport,
   POLYGON_TILE_LAYER_ID,
+  POLYLINE_TILE_LAYER_ID,
 } from '@mapconductor/js-sdk-core';
 import type TileLayer from 'ol/layer/Tile';
 import type TileSource from 'ol/source/Tile';
@@ -120,14 +121,16 @@ export class OpenLayersRasterLayerRenderer {
       source: tileSource,
       opacity: state.opacity,
       // Marker tiles are mounted as a raster but belong with the markers (under the native
-      // marker layer, over the shapes); polygon tiles with the polygons, at the bottom of their
-      // band (under the natively drawn polygons, over ground images).
+      // marker layer, over the shapes); polygon and polyline tiles with the polygons and the
+      // polylines, at the bottom of their bands (under the natively drawn ones).
       zIndex:
         state.id === 'mc-marker-tiles'
           ? overlayLayerZIndex('marker', 0)
           : state.id === POLYGON_TILE_LAYER_ID
             ? overlayLayerZIndex('polygon', Number.NEGATIVE_INFINITY)
-            : overlayLayerZIndex('rasterLayer', state.zIndex),
+            : state.id === POLYLINE_TILE_LAYER_ID
+              ? overlayLayerZIndex('polyline', Number.NEGATIVE_INFINITY)
+              : overlayLayerZIndex('rasterLayer', state.zIndex),
     });
 
     this.holder.map.addLayer(layer);
