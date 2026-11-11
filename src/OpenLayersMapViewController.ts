@@ -44,7 +44,16 @@ import {
 } from './vector/OpenLayersVectorControllers';
 import { OpenLayersRasterLayerController } from './raster/OpenLayersRasterLayer';
 import { OpenLayersCameraState } from './OpenLayersCameraState';
-import { fromOpenLayersEvent } from './helpers';
+import { fromOpenLayersEvent, toCoordinate } from './helpers';
+
+/** Pointer travel before a press on a marker becomes a drag (a click below it). */
+const DRAG_SLOP_PX = 4;
+
+/** Zoom levels for one wheel event: a mouse notch is about one level. */
+function wheelZoomDelta(event: WheelEvent): number {
+  const pixels = event.deltaMode === 1 ? event.deltaY * 33 : event.deltaY;
+  return Math.max(-1, Math.min(1, -pixels / 100));
+}
 
 export class OpenLayersMapViewController
   extends BaseMapViewController
@@ -142,6 +151,7 @@ export class OpenLayersMapViewController
       else await rasterLayerController.removeInternal('mc-marker-tiles');
     };
     this.setupEvents();
+    this.uninstallTransformedGestures = this.installTransformedGestures();
   }
 
   getMap(): Map { return this.map; }
@@ -238,7 +248,7 @@ export class OpenLayersMapViewController
       this.lastClickEvent = event;
       // marker → circle → groundImage → polyline → polygon → map の一本道。
       // 順序と先勝ちはコアの BaseMapViewController.dispatchTap が持つ。
-      this.dispatchTap(fromOpenLayersEvent(event));
+      this.dispatchTap(this.eventGeoPoint(event));
       this.lastClickEvent = null;
     });
 
@@ -246,7 +256,7 @@ export class OpenLayersMapViewController
     // but is absent from OL's typed map-browser event-name union, so the name
     // needs a narrowing cast (string -> MapBrowserEventTypes, no `any`).
     this.map.on('contextmenu' as string as MapBrowserEventTypes, (event: MapBrowserEvent) => {
-      this.notifyMapLongClick(fromOpenLayersEvent(event));
+      this.notifyMapLongClick(this.eventGeoPoint(event));
     });
 
     const camera = this.getCameraPosition();
@@ -300,6 +310,163 @@ export class OpenLayersMapViewController
     return { x: source.clientX - rect.left, y: source.clientY - rect.top };
   }
 
+  /** @internal */
+  private isPlaneTransformed(): boolean {
+    return this.getVisualTilt() > 0.5 || Math.abs(this.getVisualBearing()) > 0.01;
+  }
+
+  /**
+   * The ground point of a map event. OpenLayers reads the pointer against the
+   * map element's bounding box, which the plane's CSS rotation/tilt throws off,
+   * so while the plane is transformed the point is reprojected from the
+   * pointer's position in the outer container.
+   *
+   * @internal
+   */
+  private eventGeoPoint(event: MapBrowserEvent): GeoPoint {
+    if (this.isPlaneTransformed()) {
+      const outer = this.outerOffsetFromEvent(event.originalEvent);
+      if (outer) return this.holder.fromScreenOffsetSync(outer);
+    }
+    return fromOpenLayersEvent(event);
+  }
+
+  /** @internal */
+  private uninstallTransformedGestures: () => void = () => {};
+
+  /**
+   * Pans, wheel-zooms and drags markers by hand while the plane is rotated or
+   * tilted.
+   *
+   * `DragPan` and `MouseWheelZoom` read the pointer in the plane's
+   * untransformed pixels, so on a rotated map the map slides off at the
+   * bearing's angle and zooms toward the wrong point. The native marker layer
+   * is hidden meanwhile (upright billboards are drawn instead), so `Translate`
+   * cannot start a marker drag either. While the plane is transformed:
+   *
+   * - a press on a draggable marker drags it, keeping the grab offset on
+   *   screen, once the pointer has moved past `DRAG_SLOP_PX`;
+   * - any other press pans, keeping the grabbed ground point under the pointer;
+   * - the wheel zooms about the ground under the cursor.
+   *
+   * A flat, north-up map keeps OpenLayers' own interactions (and their
+   * inertia). Listens in the capture phase on the plane's parent so it runs
+   * before OpenLayers' own pointer handling. Returns the uninstaller.
+   *
+   * @internal
+   */
+  private installTransformedGestures(): () => void {
+    const outer = this.holder.mapView.parentElement;
+    if (!outer) return () => {};
+    let pointerId: number | null = null;
+    let down: Offset | null = null;
+    // Pan: the ground point grabbed. Marker drag: the marker and the pointer's
+    // offset from its anchor on screen.
+    let anchor: number[] | null = null;
+    let marker: { state: MarkerState; grab: Offset; started: boolean } | null = null;
+    let suspended: DragPan[] = [];
+
+    const screenOffset = (event: MouseEvent): Offset => {
+      const rect = outer.getBoundingClientRect();
+      return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    };
+    const mapPixelOf = (offset: Offset) =>
+      this.map.getPixelFromCoordinate(toCoordinate(this.holder.fromScreenOffsetSync(offset)));
+
+    const end = () => {
+      if (pointerId == null) return;
+      pointerId = null;
+      down = null;
+      anchor = null;
+      window.removeEventListener('pointermove', onMove, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onUp, true);
+      if (marker?.started) this.markerController.endScreenDrag(marker.state);
+      marker = null;
+      for (const interaction of suspended) interaction.setActive(true);
+      suspended = [];
+    };
+    const onMove = (event: PointerEvent) => {
+      if (event.pointerId !== pointerId) return;
+      const at = screenOffset(event);
+      if (marker) {
+        if (!marker.started) {
+          if (!down || Math.hypot(at.x - down.x, at.y - down.y) < DRAG_SLOP_PX) return;
+          marker.started = true;
+          this.markerController.beginScreenDrag(marker.state);
+        }
+        const position = this.holder.fromScreenOffsetSync({ x: at.x - marker.grab.x, y: at.y - marker.grab.y });
+        this.markerController.moveScreenDrag(marker.state, position);
+        return;
+      }
+      if (!anchor) return;
+      const anchorPx = this.map.getPixelFromCoordinate(anchor);
+      const pointerPx = mapPixelOf(at);
+      const size = this.map.getSize();
+      if (!anchorPx || !pointerPx || !size) return;
+      // Both points in the plane's own pixels: move the centre by the gap
+      // between where the anchor is and where the pointer now is.
+      const center = this.map.getCoordinateFromPixel([
+        size[0] / 2 + anchorPx[0] - pointerPx[0],
+        size[1] / 2 + anchorPx[1] - pointerPx[1],
+      ]);
+      if (center) this.view.setCenter(center);
+    };
+    const onUp = (event: PointerEvent) => {
+      if (event.pointerId === pointerId) end();
+    };
+    const onDown = (event: PointerEvent) => {
+      if (pointerId != null) {
+        // A second finger: leave the gesture (pinch) to OpenLayers.
+        end();
+        return;
+      }
+      if (!event.isPrimary || event.button !== 0 || !this.isPlaneTransformed()) return;
+      const at = screenOffset(event);
+      const dragPans = this.map.getInteractions().getArray()
+        .filter((interaction): interaction is DragPan => interaction instanceof DragPan && interaction.getActive());
+      const hit = this.markerController.isNativeMarkersVisible()
+        ? null
+        : this.markerController.findAtScreen(at, event.pointerType === 'touch' ? 'touch' : 'mouse');
+      if (hit?.state.draggable) {
+        const anchorScreen = this.holder.toScreenOffset(hit.state.position);
+        marker = { state: hit.state, grab: { x: at.x - anchorScreen.x, y: at.y - anchorScreen.y }, started: false };
+      } else if (dragPans.length > 0) {
+        anchor = toCoordinate(this.holder.fromScreenOffsetSync(at));
+      } else {
+        // DragPan switched off by the app's UI settings: no panning at all.
+        return;
+      }
+      pointerId = event.pointerId;
+      down = at;
+      suspended = dragPans;
+      for (const interaction of suspended) interaction.setActive(false);
+      window.addEventListener('pointermove', onMove, true);
+      window.addEventListener('pointerup', onUp, true);
+      window.addEventListener('pointercancel', onUp, true);
+    };
+    // MouseWheelZoom anchors on the pointer read the same untransformed way,
+    // so it zooms toward the wrong point; zoom about the ground under the cursor.
+    const onWheel = (event: WheelEvent) => {
+      if (!this.isPlaneTransformed()) return;
+      const wheelZoom = this.map.getInteractions().getArray()
+        .some(interaction => interaction instanceof MouseWheelZoom && interaction.getActive());
+      if (!wheelZoom) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const anchorCoordinate = toCoordinate(this.holder.fromScreenOffsetSync(screenOffset(event)));
+      this.view.adjustZoom(wheelZoomDelta(event), anchorCoordinate);
+    };
+
+    outer.addEventListener('pointerdown', onDown, true);
+    outer.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    return () => {
+      end();
+      outer.removeEventListener('pointerdown', onDown, true);
+      outer.removeEventListener('wheel', onWheel, true);
+    };
+  }
+
   async clearOverlays(): Promise<void> {
     await this.clearOverlayControllers([
       this.markerController,
@@ -314,6 +481,7 @@ export class OpenLayersMapViewController
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.uninstallTransformedGestures();
     this.map.setTarget(undefined);
     void this.clearOverlays().finally(() => this.markerController.destroy());
   }
