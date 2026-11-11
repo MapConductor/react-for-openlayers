@@ -190,16 +190,46 @@ export function OpenLayersMapView({
   const [visualTilt, setVisualTilt] = useState(() => state.cameraPosition.tilt);
   const [visualBearing, setVisualBearing] = useState(() => state.cameraPosition.bearing);
   const experimentalTilt = Math.min(60, Math.abs(visualTilt));
-  // While tilted, the CSS `rotateX` below lays the native canvas markers flat, so
-  // they're hidden and drawn as upright canvas billboards instead.
-  const isTilted = experimentalTilt > 0.5;
+  // The plane's transform tilts the native canvas markers flat and turns them with
+  // the map, so while it tilts or rotates they're hidden and drawn as upright
+  // canvas billboards instead.
+  const usesBillboards = experimentalTilt > 0.5 || Math.abs(visualBearing) > 0.01;
+  // The plane has to cover the viewport whatever the angle. Undoing the tilt
+  // stretches the viewport to H / cos(tilt) along the screen's vertical, and
+  // undoing the rotation turns that rectangle by the bearing; a square as wide
+  // as its diagonal covers it at every bearing. A fixed 200% plane does not:
+  // turned 90 or 270 degrees, its height becomes the screen width, which a
+  // wide viewport outgrows and shows grey bands at the sides.
+  const [viewportSize, setViewportSize] = useState<{ width: number; height: number } | null>(null);
+  useEffect(() => {
+    const outer = outerContainerRef.current;
+    if (!outer) return;
+    const update = () => {
+      const width = outer.clientWidth;
+      const height = outer.clientHeight;
+      setViewportSize(prev => (prev?.width === width && prev?.height === height ? prev : { width, height }));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(outer);
+    return () => observer.disconnect();
+  }, []);
+  const planeSide = viewportSize
+    ? Math.ceil(Math.hypot(
+        viewportSize.width,
+        viewportSize.height / Math.cos((experimentalTilt * Math.PI) / 180),
+      ))
+    : null;
   const mapPlaneStyle: CSSProperties = {
     position: 'absolute',
     left: '50%',
     top: '50%',
-    width: '200%',
-    height: '200%',
-    transform: `translate(-50%, -50%) rotateZ(${visualBearing}deg) rotateX(${experimentalTilt}deg)`,
+    width: planeSide != null ? `${planeSide}px` : '200%',
+    height: planeSide != null ? `${planeSide}px` : '200%',
+    // Transforms apply right to left: turn the map first, then tilt it about
+    // the *screen* x axis. The other order tilts along the map's own axis,
+    // which leans the map sideways whenever it is rotated.
+    transform: `translate(-50%, -50%) rotateX(${experimentalTilt}deg) rotateZ(${visualBearing}deg)`,
     transformOrigin: '50% 50%',
     transformStyle: 'flat',
     willChange: 'transform',
@@ -226,13 +256,13 @@ export function OpenLayersMapView({
       typedControllerRef.current?.getMap().updateSize();
     });
     return () => cancelAnimationFrame(frame);
-  }, [visualTilt, visualBearing]);
+  }, [visualTilt, visualBearing, planeSide]);
 
-  // Swap between native canvas markers (untilted) and upright canvas billboards
-  // (tilted): hide the native marker layer while tilted so it isn't flattened.
+  // Swap between native canvas markers (flat, north-up) and upright canvas
+  // billboards (tilted or rotated): hide the native marker layer meanwhile.
   useEffect(() => {
-    controller?.setNativeMarkersVisible(!isTilted);
-  }, [controller, isTilted]);
+    controller?.setNativeMarkersVisible(!usesBillboards);
+  }, [controller, usesBillboards]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -387,7 +417,7 @@ export function OpenLayersMapView({
     <MapContext.Provider value={createMapContextValue({ controller, isReady, isLoaded, state })}>
       <div ref={outerContainerRef} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', ...containerStyle }}>
         <div ref={containerRef} className={className} style={mapPlaneStyle} />
-        {controller && <OpenLayersTiltMarkerCanvas controller={controller} active={isTilted} />}
+        {controller && <OpenLayersTiltMarkerCanvas controller={controller} active={usesBillboards} />}
         {controller && (
           <div style={{ position: 'absolute', inset: 0, zIndex: 750, pointerEvents: 'none', overflow: 'hidden' }}>
             <MapAttributionOverlay

@@ -59,11 +59,12 @@ export class OpenLayersMapViewHolder extends MapViewHolderBase<HTMLElement, Map>
     const viewportHeight = viewport?.clientHeight ?? mapHeight;
     const bearing = (this.controller?.getVisualBearing() ?? 0) * Math.PI / 180;
     const tiltScale = Math.cos((this.controller?.getVisualTilt() ?? 0) * Math.PI / 180);
+    // Same order as the plane's CSS transform: rotate, then tilt on screen.
     const x = offset.x - mapWidth / 2;
-    const y = (offset.y - mapHeight / 2) * tiltScale;
+    const y = offset.y - mapHeight / 2;
     return {
       x: viewportWidth / 2 + x * Math.cos(bearing) - y * Math.sin(bearing),
-      y: viewportHeight / 2 + x * Math.sin(bearing) + y * Math.cos(bearing),
+      y: viewportHeight / 2 + (x * Math.sin(bearing) + y * Math.cos(bearing)) * tiltScale,
     };
   }
 
@@ -75,11 +76,12 @@ export class OpenLayersMapViewHolder extends MapViewHolderBase<HTMLElement, Map>
     const viewportHeight = viewport?.clientHeight ?? mapHeight;
     const bearing = -(this.controller?.getVisualBearing() ?? 0) * Math.PI / 180;
     const tiltScale = Math.max(Math.cos((this.controller?.getVisualTilt() ?? 0) * Math.PI / 180), 0.01);
+    // Inverse of mapPixelToViewport: undo the tilt, then the rotation.
     const x = offset.x - viewportWidth / 2;
-    const y = offset.y - viewportHeight / 2;
+    const y = (offset.y - viewportHeight / 2) / tiltScale;
     return {
       x: mapWidth / 2 + x * Math.cos(bearing) - y * Math.sin(bearing),
-      y: mapHeight / 2 + (x * Math.sin(bearing) + y * Math.cos(bearing)) / tiltScale,
+      y: mapHeight / 2 + x * Math.sin(bearing) + y * Math.cos(bearing),
     };
   }
 }
