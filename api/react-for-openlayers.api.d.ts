@@ -112,6 +112,14 @@ declare class OpenLayersMarkerOverlayRenderer extends AbstractMarkerOverlayRende
     onRemove(data: MarkerEntity<Feature<Point>>[]): Promise<void>;
     onPostProcess(): Promise<void>;
     setMarkerPosition(entity: MarkerEntity<Feature<Point>>, position: GeoPoint): void;
+    /**
+     * Sets the feature's style and remembers it. Hiding sets the style to `null`,
+     * which OpenLayers takes as "do not render"; `undefined` would mean "use the
+     * layer's style", which is OpenLayers' default blue dot here. The remembered
+     * style is what showing the marker again puts back. (A fresh Feature's
+     * `getStyle()` is null too, so hidden is tracked as its own flag.)
+     */
+    private applyStyle;
     setMarkerVisible(entity: MarkerEntity<Feature<Point>>, visible: boolean): void;
     private createStyle;
 }
