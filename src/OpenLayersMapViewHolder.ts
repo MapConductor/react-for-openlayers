@@ -1,13 +1,15 @@
 import {
   MapViewHolderBase,
+  ProjectedUnit,
   createGeoPoint,
+  type MapCoordinateSystem,
   type GeoPoint,
   type GeoPointInterface,
   type Offset,
 } from '@mapconductor/js-sdk-core';
 import type Map from 'ol/Map';
 import type View from 'ol/View';
-import { toLonLat } from 'ol/proj.js';
+import { fromLonLat, toLonLat } from 'ol/proj.js';
 import type { OpenLayersMapViewController } from './OpenLayersMapViewController';
 import { toCoordinate } from './helpers';
 
@@ -28,6 +30,29 @@ export class OpenLayersMapViewHolder extends MapViewHolderBase<HTMLElement, Map>
 
   setController(controller: OpenLayersMapViewController): void {
     this.controller = controller;
+  }
+
+  /**
+   * The view's projection: EPSG:3857 by default, or whatever the view was
+   * created with. `getUnits()` gives `m` / `degrees` for the common ones.
+   */
+  override get coordinateSystem(): MapCoordinateSystem {
+    const projection = this.view.getProjection();
+    const units = projection.getUnits();
+    return {
+      code: projection.getCode() || null,
+      unit: units === 'm' ? ProjectedUnit.Meters : units === 'degrees' ? ProjectedUnit.Degrees : ProjectedUnit.Other,
+    };
+  }
+
+  override toProjectedPoint(position: GeoPointInterface): Offset | null {
+    const [x, y] = fromLonLat([position.longitude, position.latitude], this.view.getProjection());
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+  }
+
+  override fromProjectedPoint(point: Offset): GeoPoint | null {
+    const [longitude, latitude] = toLonLat([point.x, point.y], this.view.getProjection());
+    return Number.isFinite(latitude) && Number.isFinite(longitude) ? createGeoPoint({ latitude, longitude }) : null;
   }
 
   toScreenOffset(position: GeoPointInterface): Offset {
