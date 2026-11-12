@@ -137,6 +137,10 @@ export class OpenLayersCameraState {
       northEast[1],
     ];
 
+    // A fit frames the bounds in the whole viewport: the paddings of the last
+    // move no longer apply (MapLibre does the same), so the read-back must not
+    // shift the fitted center by them.
+    this.cameraPaddings = null;
     // android-sdk の fitBounds(bounds, padding) と同じくアニメーションはしない。
     this.deps.view.fit(extent, {
       padding: this.normalizePadding(padding),

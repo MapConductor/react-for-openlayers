@@ -23,6 +23,10 @@ import { toCoordinate } from '../helpers';
 
 /** Feature property holding the marker's draw order (see markerDrawOrder). */
 const DRAW_ORDER_KEY = 'mc:drawOrder';
+/** The marker's own Style, kept on the feature so a hidden marker can get it back. */
+const STYLE_KEY = 'mc:style';
+/** Set while the marker is hidden (its style is then null). */
+const HIDDEN_KEY = 'mc:hidden';
 
 const drawOrderOf = (feature: Feature<Point>): number => (feature.get(DRAW_ORDER_KEY) as number | undefined) ?? 0;
 
@@ -77,7 +81,7 @@ export class OpenLayersMarkerOverlayRenderer extends AbstractMarkerOverlayRender
 
       feature.setId(state.id);
       feature.set(DRAW_ORDER_KEY, markerDrawOrder(state.zIndex, state.position), true);
-      feature.setStyle(this.createStyle(bitmapIcon));
+      this.applyStyle(feature, this.createStyle(bitmapIcon));
 
       this.vectorSource.addFeature(feature);
       features.push(feature);
@@ -98,7 +102,7 @@ export class OpenLayersMarkerOverlayRenderer extends AbstractMarkerOverlayRender
 
       actual.setGeometry(new PointClass(toCoordinate(current.state.position)));
       this.applyDrawOrder(actual, current.state);
-      actual.setStyle(this.createStyle(bitmapIcon));
+      this.applyStyle(actual, this.createStyle(bitmapIcon));
 
       features.push(actual);
     }
@@ -124,11 +128,26 @@ export class OpenLayersMarkerOverlayRenderer extends AbstractMarkerOverlayRender
     feature.set(DRAW_ORDER_KEY, markerDrawOrder(state.zIndex, state.position), true);
   }
 
+  /**
+   * Sets the feature's style and remembers it. Hiding sets the style to `null`,
+   * which OpenLayers takes as "do not render"; `undefined` would mean "use the
+   * layer's style", which is OpenLayers' default blue dot here. The remembered
+   * style is what showing the marker again puts back. (A fresh Feature's
+   * `getStyle()` is null too, so hidden is tracked as its own flag.)
+   */
+  private applyStyle(feature: Feature<Point>, style: Style): void {
+    feature.set(STYLE_KEY, style, true);
+    if (!feature.get(HIDDEN_KEY)) feature.setStyle(style);
+  }
+
   override setMarkerVisible(entity: MarkerEntity<Feature<Point>>, visible: boolean): void {
+    const feature = entity.marker;
+    if (!feature) return;
+    feature.set(HIDDEN_KEY, !visible, true);
     if (visible) {
-      entity.marker?.setStyle(entity.marker.getStyle());
+      feature.setStyle((feature.get(STYLE_KEY) as Style | undefined) ?? null);
     } else {
-      entity.marker?.setStyle(undefined);
+      feature.setStyle(null);
     }
   }
 
