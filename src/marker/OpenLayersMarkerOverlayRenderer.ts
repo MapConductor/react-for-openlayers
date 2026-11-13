@@ -4,6 +4,8 @@ import {
   type ChangeParams,
   type GeoPoint,
   type MarkerEntity,
+  type MarkerState,
+  markerDrawOrder,
 } from '@mapconductor/js-sdk-core';
 import type Feature from 'ol/Feature';
 import type { Point } from 'ol/geom';
@@ -18,6 +20,15 @@ import StyleClass from 'ol/style/Style.js';
 import IconClass from 'ol/style/Icon.js';
 import { OpenLayersMapViewHolder } from '../OpenLayersMapViewHolder';
 import { toCoordinate } from '../helpers';
+
+/** Feature property holding the marker's draw order (see markerDrawOrder). */
+const DRAW_ORDER_KEY = 'mc:drawOrder';
+/** The marker's own Style, kept on the feature so a hidden marker can get it back. */
+const STYLE_KEY = 'mc:style';
+/** Set while the marker is hidden (its style is then null). */
+const HIDDEN_KEY = 'mc:hidden';
+
+const drawOrderOf = (feature: Feature<Point>): number => (feature.get(DRAW_ORDER_KEY) as number | undefined) ?? 0;
 
 export class OpenLayersMarkerOverlayRenderer extends AbstractMarkerOverlayRenderer<
   OpenLayersMapViewHolder,
@@ -34,6 +45,10 @@ export class OpenLayersMarkerOverlayRenderer extends AbstractMarkerOverlayRender
     this.vectorLayer = new VectorLayerClass({
       source: this.vectorSource,
       zIndex: 600,
+      // Later features are drawn on top: sort by the shared marker draw order
+      // (zIndex, then south, then west) rather than by the order they were added.
+      // A per-feature Style zIndex would do too, but makes one replay group per value.
+      renderOrder: (a, b) => drawOrderOf(a as Feature<Point>) - drawOrderOf(b as Feature<Point>),
     });
 
     holder.map.addLayer(this.vectorLayer);
@@ -65,7 +80,8 @@ export class OpenLayersMarkerOverlayRenderer extends AbstractMarkerOverlayRender
       });
 
       feature.setId(state.id);
-      feature.setStyle(this.createStyle(bitmapIcon));
+      feature.set(DRAW_ORDER_KEY, markerDrawOrder(state.zIndex, state.position), true);
+      this.applyStyle(feature, this.createStyle(bitmapIcon));
 
       this.vectorSource.addFeature(feature);
       features.push(feature);
@@ -85,7 +101,8 @@ export class OpenLayersMarkerOverlayRenderer extends AbstractMarkerOverlayRender
       }
 
       actual.setGeometry(new PointClass(toCoordinate(current.state.position)));
-      actual.setStyle(this.createStyle(bitmapIcon));
+      this.applyDrawOrder(actual, current.state);
+      this.applyStyle(actual, this.createStyle(bitmapIcon));
 
       features.push(actual);
     }
@@ -103,13 +120,34 @@ export class OpenLayersMarkerOverlayRenderer extends AbstractMarkerOverlayRender
 
   setMarkerPosition(entity: MarkerEntity<Feature<Point>>, position: GeoPoint): void {
     entity.marker?.setGeometry(new PointClass(toCoordinate(position)));
+    if (entity.marker) entity.marker.set(DRAW_ORDER_KEY, markerDrawOrder(entity.state.zIndex, position), true);
+  }
+
+  /** @internal */
+  private applyDrawOrder(feature: Feature<Point>, state: MarkerState): void {
+    feature.set(DRAW_ORDER_KEY, markerDrawOrder(state.zIndex, state.position), true);
+  }
+
+  /**
+   * Sets the feature's style and remembers it. Hiding sets the style to `null`,
+   * which OpenLayers takes as "do not render"; `undefined` would mean "use the
+   * layer's style", which is OpenLayers' default blue dot here. The remembered
+   * style is what showing the marker again puts back. (A fresh Feature's
+   * `getStyle()` is null too, so hidden is tracked as its own flag.)
+   */
+  private applyStyle(feature: Feature<Point>, style: Style): void {
+    feature.set(STYLE_KEY, style, true);
+    if (!feature.get(HIDDEN_KEY)) feature.setStyle(style);
   }
 
   override setMarkerVisible(entity: MarkerEntity<Feature<Point>>, visible: boolean): void {
+    const feature = entity.marker;
+    if (!feature) return;
+    feature.set(HIDDEN_KEY, !visible, true);
     if (visible) {
-      entity.marker?.setStyle(entity.marker.getStyle());
+      feature.setStyle((feature.get(STYLE_KEY) as Style | undefined) ?? null);
     } else {
-      entity.marker?.setStyle(undefined);
+      feature.setStyle(null);
     }
   }
 

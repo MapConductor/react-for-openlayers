@@ -1,4 +1,4 @@
-import { MapDesignTypeInterface, AttributionRule, MapViewStateInterface, MapViewState, MapCameraPosition, MapViewControllerInterface, MapViewBaseProps, GeoRectBounds, MarkerTilingOptions, MapViewHolderBase, GeoPointInterface, Offset, GeoPoint, AbstractMarkerOverlayRenderer, AddParams, ChangeParams, MarkerEntity, AbstractMarkerController, RasterLayerState, MarkerState, CircleController, AbstractCircleOverlayRenderer, CircleState, CircleEntity, PolylineController, AbstractPolylineOverlayRenderer, PolylineState, PolylineEntity, PolygonController, AbstractPolygonOverlayRenderer, PolygonState, PolygonEntity, GroundImageController, AbstractGroundImageOverlayRenderer, GroundImageState, GroundImageEntity, RasterLayerController, RasterHeaderSupport, RasterLayerAddParams, RasterLayerChangeParams, RasterLayerEntity, BaseMapViewController, MarkerCapable, CircleCapable, PolylineCapable, PolygonCapable, GroundImageCapable, RasterLayerCapable, MapUISettings, OnMapInitializedHandler, OnMarkerEventHandler, MarkerAnimationOverlayHost, MapConfig, MapProvider } from '@mapconductor/js-sdk-core';
+import { MapDesignTypeInterface, AttributionRule, MapViewStateInterface, MapViewState, MapCameraPosition, MapViewControllerInterface, MapViewBaseProps, GeoRectBounds, MarkerTilingOptions, PolylineTilingOptions, CircleTilingOptions, MapViewHolderBase, MapCoordinateSystem, GeoPointInterface, Offset, GeoPoint, AbstractMarkerOverlayRenderer, AddParams, ChangeParams, MarkerEntity, AbstractMarkerController, RasterLayerState, MarkerState, CircleController, AbstractCircleOverlayRenderer, CircleState, CircleEntity, PolylineController, AbstractPolylineOverlayRenderer, PolylineState, PolylineEntity, PolygonController, AbstractPolygonOverlayRenderer, PolygonState, PolygonEntity, GroundImageController, AbstractGroundImageOverlayRenderer, GroundImageState, GroundImageEntity, RasterLayerController, RasterHeaderSupport, RasterLayerAddParams, RasterLayerChangeParams, RasterLayerEntity, BaseMapViewController, MarkerCapable, CircleCapable, PolylineCapable, PolygonCapable, GroundImageCapable, RasterLayerCapable, MapUISettings, OnMapInitializedHandler, OnMarkerEventHandler, MarkerAnimationOverlayHost, MapConfig, MapProvider } from '@mapconductor/js-sdk-core';
 import TileSource from 'ol/source/Tile';
 import * as react from 'react';
 import { CSSProperties, ReactNode } from 'react';
@@ -57,8 +57,20 @@ interface OpenLayersMapViewProps extends MapViewBaseProps<OpenLayersMapViewState
     onError?: (error: Error) => void;
     children?: ReactNode;
     markerTilingOptions?: MarkerTilingOptions;
+    /**
+     * When to draw polylines as raster tiles ({@link PolylineTilingOptions.Default} if omitted).
+     * Read when the map is created; a later value applies from the next time the polylines are
+     * handed to the map.
+     */
+    polylineTilingOptions?: PolylineTilingOptions;
+    /**
+     * When to draw circles as raster tiles ({@link CircleTilingOptions.Default} if omitted).
+     * Read when the map is created; a later value applies from the next time the circles are
+     * handed to the map.
+     */
+    circleTilingOptions?: CircleTilingOptions;
 }
-declare function OpenLayersMapView({ state, mapStyle, onStyleDiagnostics, onMapLoaded, onMapClick, onMapLongClick, onCameraMoveStart, onCameraMove, onCameraMoveEnd, maxZoom, minZoom, restrictBounds, cameraRestriction, className, containerStyle, options, onError, children, markerTilingOptions, }: OpenLayersMapViewProps): react.JSX.Element;
+declare function OpenLayersMapView({ state, mapStyle, onStyleDiagnostics, onMapLoaded, onMapClick, onMapLongClick, onCameraMoveStart, onCameraMove, onCameraMoveEnd, maxZoom, minZoom, restrictBounds, cameraRestriction, className, containerStyle, options, onError, children, markerTilingOptions, polylineTilingOptions, circleTilingOptions, }: OpenLayersMapViewProps): react.JSX.Element;
 
 declare class OpenLayersMapViewHolder extends MapViewHolderBase<HTMLElement, Map> {
     readonly mapView: HTMLElement;
@@ -68,6 +80,13 @@ declare class OpenLayersMapViewHolder extends MapViewHolderBase<HTMLElement, Map
     constructor(mapView: HTMLElement, map: Map, view: View);
     getController(): OpenLayersMapViewController | null;
     setController(controller: OpenLayersMapViewController): void;
+    /**
+     * The view's projection: EPSG:3857 by default, or whatever the view was
+     * created with. `getUnits()` gives `m` / `degrees` for the common ones.
+     */
+    get coordinateSystem(): MapCoordinateSystem;
+    toProjectedPoint(position: GeoPointInterface): Offset | null;
+    fromProjectedPoint(point: Offset): GeoPoint | null;
     toScreenOffset(position: GeoPointInterface): Offset;
     fromScreenOffsetSync(offset: Offset): GeoPoint;
     private mapPixelToViewport;
@@ -93,6 +112,14 @@ declare class OpenLayersMarkerOverlayRenderer extends AbstractMarkerOverlayRende
     onRemove(data: MarkerEntity<Feature<Point>>[]): Promise<void>;
     onPostProcess(): Promise<void>;
     setMarkerPosition(entity: MarkerEntity<Feature<Point>>, position: GeoPoint): void;
+    /**
+     * Sets the feature's style and remembers it. Hiding sets the style to `null`,
+     * which OpenLayers takes as "do not render"; `undefined` would mean "use the
+     * layer's style", which is OpenLayers' default blue dot here. The remembered
+     * style is what showing the marker again puts back. (A fresh Feature's
+     * `getStyle()` is null too, so hidden is tracked as its own flag.)
+     */
+    private applyStyle;
     setMarkerVisible(entity: MarkerEntity<Feature<Point>>, visible: boolean): void;
     private createStyle;
 }
@@ -313,6 +340,16 @@ interface OpenLayersConfig extends MapConfig {
     /** Restricts panning/zooming so the viewport cannot leave this rectangle. */
     restrictBounds?: GeoRectBounds;
     markerTilingOptions?: MarkerTilingOptions;
+    /**
+     * When to draw polylines as raster tiles; {@link PolylineTilingOptions.Default} if omitted.
+     * The controller's `setPolylineTilingOptions` replaces it later.
+     */
+    polylineTilingOptions?: PolylineTilingOptions;
+    /**
+     * When to draw circles as raster tiles; {@link CircleTilingOptions.Default} if omitted.
+     * The controller's `setCircleTilingOptions` replaces it later.
+     */
+    circleTilingOptions?: CircleTilingOptions;
     options?: Omit<MapOptions, 'target'>;
 }
 declare class OpenLayersProvider extends MapProvider {

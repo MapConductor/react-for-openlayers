@@ -1,6 +1,6 @@
 import {
   MapProvider,
-  MarkerTilingOptions,
+  MarkerTilingOptions, PolylineTiler, PolylineTilingOptions, CircleTiler, CircleTilingOptions,
   type GeoRectBounds,
   type MapConfig,
   type MapViewControllerInterface, toNativeRotation, } from '@mapconductor/js-sdk-core';
@@ -37,6 +37,16 @@ export interface OpenLayersConfig extends MapConfig {
   /** Restricts panning/zooming so the viewport cannot leave this rectangle. */
   restrictBounds?: GeoRectBounds;
   markerTilingOptions?: MarkerTilingOptions;
+  /**
+   * When to draw polylines as raster tiles; {@link PolylineTilingOptions.Default} if omitted.
+   * The controller's `setPolylineTilingOptions` replaces it later.
+   */
+  polylineTilingOptions?: PolylineTilingOptions;
+  /**
+   * When to draw circles as raster tiles; {@link CircleTilingOptions.Default} if omitted.
+   * The controller's `setCircleTilingOptions` replaces it later.
+   */
+  circleTilingOptions?: CircleTilingOptions;
   options?: Omit<MapOptions, 'target'>;
 }
 
@@ -80,6 +90,12 @@ export class OpenLayersProvider extends MapProvider {
     const markerController = new OpenLayersMarkerController(markerRenderer, config.markerTilingOptions);
     const circleController = new OpenLayersCircleController(new OpenLayersCircleRenderer(holder));
     const polylineController = new OpenLayersPolylineController(new OpenLayersPolylineRenderer(holder));
+    // Many polylines are drawn as tiles by the tile service worker and shown as one raster
+    // layer (the view controller mounts it); taps still resolve against the original paths.
+    polylineController.tiler = new PolylineTiler(config.polylineTilingOptions ?? PolylineTilingOptions.Default);
+    // Many circles are drawn as tiles too, shown as one raster layer at the bottom of the circle
+    // band (the view controller mounts it); taps still resolve against the original circles.
+    circleController.tiler = new CircleTiler(config.circleTilingOptions ?? CircleTilingOptions.Default);
     const polygonController = new OpenLayersPolygonController(new OpenLayersPolygonRenderer(holder));
     const groundImageController = new OpenLayersGroundImageController(new OpenLayersGroundImageRenderer(holder));
     const rasterLayerController = new OpenLayersRasterLayerController(new OpenLayersRasterLayerRenderer(holder));

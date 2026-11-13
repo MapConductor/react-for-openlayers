@@ -8,6 +8,9 @@ import {
   type RasterLayerEntity,
   type RasterLayerState,
   type RasterHeaderSupport,
+  POLYGON_TILE_LAYER_ID,
+  POLYLINE_TILE_LAYER_ID,
+  CIRCLE_TILE_LAYER_ID,
 } from '@mapconductor/js-sdk-core';
 import type TileLayer from 'ol/layer/Tile';
 import type TileSource from 'ol/source/Tile';
@@ -15,6 +18,7 @@ import type ImageTile from 'ol/ImageTile';
 import TileLayerClass from 'ol/layer/Tile.js';
 import XYZ from 'ol/source/XYZ.js';
 import { renderXYZTemplate } from 'ol/uri.js';
+import { overlayLayerZIndex } from '../helpers';
 import { OpenLayersMapViewHolder } from '../OpenLayersMapViewHolder';
 import { parseLocalTileRequest, parseLocalTileTemplate } from './localTileUrl';
 
@@ -117,7 +121,19 @@ export class OpenLayersRasterLayerRenderer {
     const layer = new TileLayerClass({
       source: tileSource,
       opacity: state.opacity,
-      zIndex: 250 + Math.max(-100, Math.min(100, state.zIndex)),
+      // Marker tiles are mounted as a raster but belong with the markers (under the native
+      // marker layer, over the shapes); polygon, circle and polyline tiles with the polygons, the circles and the
+      // polylines, at the bottom of their bands (under the natively drawn ones).
+      zIndex:
+        state.id === 'mc-marker-tiles'
+          ? overlayLayerZIndex('marker', 0)
+          : state.id === POLYGON_TILE_LAYER_ID
+            ? overlayLayerZIndex('polygon', Number.NEGATIVE_INFINITY)
+            : state.id === CIRCLE_TILE_LAYER_ID
+              ? overlayLayerZIndex('circle', Number.NEGATIVE_INFINITY)
+              : state.id === POLYLINE_TILE_LAYER_ID
+                ? overlayLayerZIndex('polyline', Number.NEGATIVE_INFINITY)
+                : overlayLayerZIndex('rasterLayer', state.zIndex),
     });
 
     this.holder.map.addLayer(layer);

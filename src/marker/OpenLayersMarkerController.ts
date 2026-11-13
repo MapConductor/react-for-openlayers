@@ -92,6 +92,32 @@ export class OpenLayersMarkerController extends AbstractMarkerController<Feature
     this.renderer.setNativeVisible(visible);
   }
 
+  /**
+   * Starts a marker drag driven from screen space. While the plane tilts or
+   * rotates, the native marker layer is hidden behind upright billboards, so
+   * the `Translate` interaction cannot start; the view controller hit-tests the
+   * billboards and drives the drag through these three calls.
+   *
+   * @internal
+   */
+  beginScreenDrag(state: MarkerState): void {
+    this.setDraggingState(state, true);
+    this.dispatchDragStart(state);
+  }
+
+  /** @internal */
+  moveScreenDrag(state: MarkerState, position: GeoPoint): void {
+    state.setPosition(position);
+    this.dispatchDrag(state);
+  }
+
+  /** @internal */
+  endScreenDrag(state: MarkerState): void {
+    this.setDraggingState(state, false);
+    this.dispatchDragEnd(state);
+    void super.update(state);
+  }
+
   /** Whether native markers are currently visible (false while tilted). */
   isNativeMarkersVisible(): boolean {
     return this.renderer.isNativeVisible;

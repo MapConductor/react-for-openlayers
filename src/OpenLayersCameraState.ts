@@ -6,7 +6,7 @@ import {
   type GeoRectBounds,
   type MapCameraPosition,
   type VisibleRegion,
-  computeOffset, toNativeHeading, bearingFromNativeRotation, } from '@mapconductor/js-sdk-core';
+  computeOffset, toNativeHeading, bearingFromNativeRotation, MapPaddings, paddedCameraCenter, paddedCameraTarget, } from '@mapconductor/js-sdk-core';
 import type Map from 'ol/Map';
 import type View from 'ol/View';
 // 拡張子を付けること。'ol/proj' はディレクトリ import になり、Node の ESM 解決が
@@ -23,6 +23,12 @@ import { toCoordinate } from './helpers';
  * MapConductor 側の論理 tilt / bearing はここで別に覚えておき、読み出しの
  * ときに混ぜる（[hasLogicalCameraOverride] が立っている間だけ論理値を優先）。
  */
+/**
+ * OpenLayers は地図を傾けられないので、平面を CSS で潰して tilt を見せている。
+ * 遠近は無いので上下視野角は 0。
+ */
+const OPENLAYERS_VERTICAL_FOV_DEGREES = 0;
+
 export interface OpenLayersCameraDeps {
   readonly map: Map;
   readonly view: View;
@@ -33,6 +39,11 @@ export class OpenLayersCameraState {
   private logicalPosition: GeoPoint = createGeoPoint({ latitude: 0, longitude: 0 });
   private logicalZoom = 0;
   private hasLogicalCameraOverride = false;
+  /**
+   * 最後に動かしたときの `MapCameraPosition.paddings`。View.padding は傾けた
+   * 平面（CSS）の上の値になってしまうので使わず、中心をずらして再現する。
+   */
+  private cameraPaddings: MapPaddings | null = null;
 
   constructor(
     private readonly deps: OpenLayersCameraDeps,
@@ -86,7 +97,7 @@ export class OpenLayersCameraState {
     this.logicalBearing = position.bearing;
     this.hasLogicalCameraOverride = position.tilt !== 0 || position.bearing !== 0;
 
-    const camera = toOpenLayersCamera(position);
+    const camera = this.withPaddedCenter(position, toOpenLayersCamera(position));
     this.deps.view.setCenter(toCoordinate(camera.position));
     this.deps.view.setZoom(camera.zoom);
     this.deps.view.setRotation(0);
@@ -101,7 +112,7 @@ export class OpenLayersCameraState {
     this.logicalBearing = position.bearing;
     this.hasLogicalCameraOverride = position.tilt !== 0 || position.bearing !== 0;
 
-    const camera = toOpenLayersCamera(position);
+    const camera = this.withPaddedCenter(position, toOpenLayersCamera(position));
     const durationSeconds = (durationMillis ?? 500) / 1000;
 
     this.deps.view.animate({
@@ -126,6 +137,10 @@ export class OpenLayersCameraState {
       northEast[1],
     ];
 
+    // A fit frames the bounds in the whole viewport: the paddings of the last
+    // move no longer apply (MapLibre does the same), so the read-back must not
+    // shift the fitted center by them.
+    this.cameraPaddings = null;
     // android-sdk の fitBounds(bounds, padding) と同じくアニメーションはしない。
     this.deps.view.fit(extent, {
       padding: this.normalizePadding(padding),
@@ -145,13 +160,44 @@ export class OpenLayersCameraState {
     });
 
     const [longitude, latitude] = toLonLat(center);
+    const liveZoom = this.deps.view.getZoom() ?? 0;
+    const live = createGeoPoint({ latitude, longitude });
     return createMapCameraPosition({
-      position: this.hasLogicalCameraOverride ? this.logicalPosition : createGeoPoint({ latitude, longitude }),
-      zoom: this.hasLogicalCameraOverride ? this.logicalZoom : this.deps.view.getZoom() ?? 0,
+      position: this.hasLogicalCameraOverride
+        ? this.logicalPosition
+        : this.cameraPaddings
+          ? paddedCameraTarget(live, this.paddingParams(this.cameraPaddings, liveZoom))
+          : live,
+      zoom: this.hasLogicalCameraOverride ? this.logicalZoom : liveZoom,
       bearing: this.hasLogicalCameraOverride ? this.logicalBearing : 0,
       tilt: this.logicalTilt,
+      paddings: this.cameraPaddings ?? MapPaddings.Zeros,
+      fov: OPENLAYERS_VERTICAL_FOV_DEGREES,
       visibleRegion: this.readVisibleRegion(),
     });
+  }
+
+  /**
+   * パディングを除いた領域の中央に target が来るよう、View の中心をずらす。
+   * 傾きは CSS で平面を潰しているだけ（遠近なし）なので fov 0 で計算する。
+   */
+  private withPaddedCenter(position: MapCameraPosition, camera: MapCameraPosition): MapCameraPosition {
+    const paddings = position.paddings ?? this.cameraPaddings;
+    this.cameraPaddings = paddings;
+    if (!paddings) return camera;
+    return camera.copy({ position: paddedCameraCenter(camera.position, this.paddingParams(paddings, camera.zoom)) });
+  }
+
+  private paddingParams(paddings: MapPaddings, zoom: number) {
+    const viewport = this.deps.holder.mapView.parentElement;
+    return {
+      zoom,
+      tilt: this.visualTilt,
+      bearing: this.visualBearing,
+      paddings,
+      fov: OPENLAYERS_VERTICAL_FOV_DEGREES,
+      viewport: { width: viewport?.clientWidth ?? 0, height: viewport?.clientHeight ?? 0 },
+    };
   }
 
   private readVisibleRegion(): VisibleRegion {
