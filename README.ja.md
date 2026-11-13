@@ -4,6 +4,69 @@
 
 MapConductor React SDK の OpenLayers プロバイダです。MapConductor のプロバイダ非依存なカメラ・マーカー・オーバーレイ API を通じて OpenLayers の地図を描画するため、同じアプリケーションコードが Google Maps、MapLibre、Mapbox、Leaflet、ArcGIS、Cesium、HERE でもそのまま動作します。
 
+## デモ
+
+[![OpenLayers の店舗マップのサンプル](https://raw.githubusercontent.com/MapConductor/react-for-openlayers/main/docs/images/demo.jpg)](https://demo-react.mapconductor.com/openlayers/map/en)
+
+[ライブデモ](https://demo-react.mapconductor.com/openlayers/map/en)で動かせます。同じ店舗マップがどのプロバイダでも動き、画面上で切り替えられます。店舗を 3 つに絞ったコード:
+
+```tsx
+import { useMemo, useState } from 'react';
+import {
+  createGeoPoint,
+  createMapCameraPosition,
+  createMarkerState,
+  type MarkerState,
+} from '@mapconductor/js-sdk-core';
+import { InfoBubble, Markers } from '@mapconductor/js-sdk-react';
+import { OpenLayersDesign, OpenLayersMapView, useOpenLayersMapViewState } from '@mapconductor/react-for-openlayers';
+import '@mapconductor/react-for-openlayers/style.css';
+
+const STORES = [
+  { id: 'waikiki', name: 'Waikiki', latitude: 21.2793, longitude: -157.8292 },
+  { id: 'kailua', name: 'Kailua', latitude: 21.3972, longitude: -157.7394 },
+  { id: 'haleiwa', name: 'Haleiwa', latitude: 21.5928, longitude: -158.1034 },
+];
+
+const INITIAL_CAMERA = createMapCameraPosition({
+  position: createGeoPoint({ latitude: 21.38, longitude: -157.93 }),
+  zoom: 10,
+});
+
+export default function App() {
+  const mapViewState = useOpenLayersMapViewState({
+    mapDesignType: OpenLayersDesign.OpenStreetMap,
+    cameraPosition: INITIAL_CAMERA,
+  });
+  const [selected, setSelected] = useState<MarkerState | null>(null);
+  const markers = useMemo(
+    () =>
+      STORES.map(store =>
+        createMarkerState({
+          id: store.id,
+          position: createGeoPoint({ latitude: store.latitude, longitude: store.longitude }),
+          extra: store,
+          onClick: marker => setSelected(marker),
+        }),
+      ),
+    [],
+  );
+
+  return (
+    <div style={{ width: '100%', height: '100vh' }}>
+      <OpenLayersMapView state={mapViewState} onMapClick={() => setSelected(null)}>
+        <Markers states={markers} />
+        {selected && (
+          <InfoBubble marker={selected}>
+            <strong>{(selected.extra as (typeof STORES)[number]).name}</strong>
+          </InfoBubble>
+        )}
+      </OpenLayersMapView>
+    </div>
+  );
+}
+```
+
 ## インストール
 
 ```shell
@@ -18,7 +81,7 @@ npm install @mapconductor/react-for-openlayers @mapconductor/js-sdk-core @mapcon
 
 `ol` は依存関係として同梱されています。デフォルトの OpenStreetMap ソースに API キーは不要です。
 
-![](https://raw.githubusercontent.com/mapconductor/react-for-openlayers/docs/images/hello-map.jpg)
+![](https://raw.githubusercontent.com/MapConductor/react-for-openlayers/main/docs/images/hello-map.jpg)
 
 ## Hello Map チュートリアル
 
